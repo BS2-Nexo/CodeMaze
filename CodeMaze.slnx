@@ -1,2 +1,6 @@
 <Solution>
+  <Folder Name="/CodeMaze.MazeGeneration/" />
+  <Folder Name="/CodeMaze.MazeGeneration/src/">
+    <Project Path="CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
+  </Folder>
 </Solution>
