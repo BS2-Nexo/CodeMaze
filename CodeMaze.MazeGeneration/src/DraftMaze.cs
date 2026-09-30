@@ -1,19 +1,18 @@
-namespace CodeMaze.MazeGeneration.Maze.Draft;
+namespace CodeMaze.MazeGeneration;
 
 public sealed class DraftMaze
 {
     private Dictionary<CellPosition, Walls> Cells { get; set; } = [];
-    private int Width { get; set; }
-    private int Height { get; set; }
+    public int Width { get; private set; }
+    public int Height { get; private set; }
+    public CellPosition Entrance { get; private set; }
+    public CellPosition Exit { get; private set; }
 
-    private readonly CellPositionMover mover;
 
     public DraftMaze(int height, int width, Walls initialWallLayout)
     {
         Width = width;
         Height = height;
-
-        mover = new(BoundsCheck);
 
         foreach (var yCoord in Enumerable.Range(0, Height).Select(y => new YCoordinate(y)))
         {
@@ -22,7 +21,7 @@ public sealed class DraftMaze
                 var pos = new CellPosition(yCoord, xCoord);
                 var walls = GetBoundaryWalls(pos);
 
-                if (walls == Walls.None)
+                if (walls == Walls.None || initialWallLayout == Walls.All)
                 {
                     walls = initialWallLayout;
                 }
@@ -30,6 +29,11 @@ public sealed class DraftMaze
                 Cells.Add(pos, walls);
             }
         }
+    }
+
+    public CellPositionMover GetMover()
+    {
+        return new CellPositionMover(BoundsCheck);
     }
 
     public Walls this[CellPosition position]
@@ -96,4 +100,32 @@ public sealed class DraftMaze
 
         return walls;
     }
+    public (CellPosition Entrance, CellPosition Exit) OpenEntranceAndExit(Random random)
+    {
+        var entrance = new CellPosition(new YCoordinate(0), new XCoordinate(random.Next(Width)));
+        var exit = new CellPosition(new YCoordinate(Height - 1), new XCoordinate(random.Next(Width)));
+
+        this[entrance] &= ~Walls.Top;
+        this[exit] &= ~Walls.Bottom;
+
+        return (entrance, exit);
+    }
+
+    public Walls[] GetCells()
+    {
+        var cells = new Walls[Width * Height];
+
+        foreach (var (position, walls) in Cells)
+        {
+            cells[position.Y.Value * Width + position.X.Value] = walls;
+        }
+
+        return cells;
+    }
+
+    public Maze Finalize()
+    {
+        return new Maze(this);
+    }
+
 }

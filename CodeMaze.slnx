@@ -3,4 +3,13 @@
   <Folder Name="/CodeMaze.MazeGeneration/src/">
     <Project Path="CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
   </Folder>
+  <Folder Name="/CodeMaze.MazeGeneration.Algorithms/" />
+  <Folder Name="/CodeMaze.MazeGeneration.Algorithms/src/">
+    <Project Path="CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
+  </Folder>
+  <Folder Name="/CodeMaze.MazeGeneration.Abstractions/" />
+  <Folder Name="/CodeMaze.MazeGeneration.Abstractions/src/">
+    <Project Path="CodeMaze.MazeGeneration.Abstractions/src/CodeMaze.MazeGeneration.Abstractions.csproj" />
+  </Folder>
+  <Project Path="CodeMaze.Runner/CodeMaze.Runner.csproj" />
 </Solution>

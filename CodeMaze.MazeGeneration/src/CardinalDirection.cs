@@ -1,4 +1,4 @@
-namespace CodeMaze.MazeGeneration.Maze;
+namespace CodeMaze.MazeGeneration;
 
 public enum CardinalDirection : byte
 {

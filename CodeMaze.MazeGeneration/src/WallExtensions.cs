@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace CodeMaze.MazeGeneration.Maze;
+namespace CodeMaze.MazeGeneration;
 
 public static class WallExtensions
 {

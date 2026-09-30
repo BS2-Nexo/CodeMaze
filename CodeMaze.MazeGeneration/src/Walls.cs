@@ -1,4 +1,4 @@
-namespace CodeMaze.MazeGeneration.Maze;
+namespace CodeMaze.MazeGeneration;
 
 [Flags]
 public enum Walls : byte

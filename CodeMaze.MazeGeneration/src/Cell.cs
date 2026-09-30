@@ -1,4 +1,4 @@
-namespace CodeMaze.MazeGeneration.Maze;
+namespace CodeMaze.MazeGeneration;
 
 public sealed class Cell(int y, int x, Walls walls)
 {
