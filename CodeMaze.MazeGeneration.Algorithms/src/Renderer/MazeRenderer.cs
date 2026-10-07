@@ -1,6 +1,5 @@
 using System.Text;
-using CodeMaze.MazeGeneration.Maze;
-using CodeMaze.MazeGeneration.Maze.Draft;
+using CodeMaze.MazeGeneration;
 namespace CodeMaze.MazeGeneration.Algorithms.Renderer;
 
 public static class MazeRenderer

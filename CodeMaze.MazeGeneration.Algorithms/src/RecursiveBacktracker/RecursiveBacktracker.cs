@@ -1,4 +1,4 @@
-using CodeMaze.MazeGeneration.Maze;
+using CodeMaze.MazeGeneration;
 
 namespace CodeMaze.MazeGeneration.Algorithms.RecursiveBacktracker;
 
