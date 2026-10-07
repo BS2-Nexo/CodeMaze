@@ -107,6 +107,8 @@ public sealed class DraftMaze
 
         this[entrance] &= ~Walls.Top;
         this[exit] &= ~Walls.Bottom;
+        Entrance = entrance;
+        Exit = exit;
 
         return (entrance, exit);
     }
