@@ -7,8 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
-    <ProjectReference Include="../CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
   </ItemGroup>
 
 </Project>
