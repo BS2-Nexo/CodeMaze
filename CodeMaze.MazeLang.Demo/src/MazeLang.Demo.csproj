@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../CodeMaze.MazeLang.Compiler/src/CodeMaze.MazeLang.Compiler.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeLang.Ast/src/CodeMaze.MazeLang.Ast.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeLang.Core/src/Codemaze.MazeLang.Core.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
+  </ItemGroup>
+</Project>
