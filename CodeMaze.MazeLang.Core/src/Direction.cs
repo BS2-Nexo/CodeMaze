@@ -1,4 +1,4 @@
-namespace MazeLang.Core;
+namespace CodeMaze.MazeLang.Core;
 
 /// <summary>
 /// Direction in the maze. Shared by the AST and the IL so that both use the
