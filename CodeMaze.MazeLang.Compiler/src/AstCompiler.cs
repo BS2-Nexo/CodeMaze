@@ -50,11 +50,12 @@ internal sealed class Compilation
                 Error($"The function '{decl.Name}' is defined more than once.", decl.Location);
                 continue;
             }
-            var (withValue, bare) = ScanReturns(decl.Body);
-            if (withValue && bare)
-                Error($"The function '{decl.Name}' sometimes returns a value and sometimes does not.", decl.Location);
 
-            var info = new FunctionInfo(decl, _ordered.Count + 1, withValue);
+            var ret = ReturnAnalysis.Analyze(decl.Body);
+            if (ret.Inconsistent)
+                Error($"The function '{decl.Name}' returns a value on some paths but can also end without one.", decl.Location);
+
+            var info = new FunctionInfo(decl, _ordered.Count + 1, ret.WithValue);
             _byName[decl.Name] = info;
             _ordered.Add(info);
         }

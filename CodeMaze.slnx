@@ -8,5 +8,7 @@
   <Project Path="CodeMaze.MazeLang.Core/src/Codemaze.MazeLang.Core.csproj" />
   <Project Path="CodeMaze.MazeLang.Demo/src/MazeLang.Demo.csproj" />
   <Project Path="CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
+  <Project Path="CodeMaze.MazeLang.Interpreter/src/CodeMaze.MazeLang.Interpreter.csproj" />
+  <Project Path="CodeMaze.MazeLang.Interpreter/demo/CodeMaze.MazeLang.Interpreter.Demo.csproj" />
   <Project Path="CodeMaze.Runner/src/CodeMaze.Runner.csproj" />
 </Solution>
