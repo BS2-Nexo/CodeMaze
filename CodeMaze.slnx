@@ -2,6 +2,10 @@
   <Project Path="CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
   <Project Path="CodeMaze.MazeGeneration/test/CodeMaze.MazeGeneration.Tests.csproj" />
   <Project Path="CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
+  <Folder Name="/CodeMaze.MazeLang.Compiler.AbstractBlocks/" />
+  <Folder Name="/CodeMaze.MazeLang.Compiler.AbstractBlocks/src/">
+    <Project Path="CodeMaze.MazeLang.Compiler.AbstractBlocks/src/CodeMaze.MazeLang.Compiler.AbstractBlocks.csproj" />
+  </Folder>
   <Project Path="CodeMaze.MazeGeneration.Abstractions/src/CodeMaze.MazeGeneration.Abstractions.csproj" />
   <Project Path="CodeMaze.MazeLang.Ast/src/CodeMaze.MazeLang.Ast.csproj" />
   <Project Path="CodeMaze.MazeLang.Compiler/src/CodeMaze.MazeLang.Compiler.csproj" />
