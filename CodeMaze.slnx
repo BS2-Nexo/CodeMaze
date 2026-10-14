@@ -11,4 +11,5 @@
   <Project Path="CodeMaze.MazeLang.Interpreter/src/CodeMaze.MazeLang.Interpreter.csproj" />
   <Project Path="CodeMaze.MazeLang.Interpreter/demo/CodeMaze.MazeLang.Interpreter.Demo.csproj" />
   <Project Path="CodeMaze.Runner/src/CodeMaze.Runner.csproj" />
+  <Project Path="CodeMaze.MazeLang.Compiler.Text/src/CodeMaze.MazeLang.Compiler.Text.csproj" />
 </Solution>
