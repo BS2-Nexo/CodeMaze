@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using CodeMaze.MazeLang.Core;
+using CodeMaze.MazeGeneration;
 
 namespace CodeMaze.MazeLang.Interpreter;
 
