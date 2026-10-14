@@ -25,6 +25,7 @@ using System.Text.Json.Serialization;
 using CodeMaze.MazeLang.Core;
 using CodeMaze.MazeLang.IL;
 using CodeMaze.MazeLang.Interpreter;
+using CodeMaze.MazeGeneration;
 
 bool quiet = args.Contains("--quiet");
 string? only = null;
@@ -164,7 +165,7 @@ static class Scenarios
                 {
                     Checks.Outcome(a, r, RunOutcome.ProgramEnded);
                     a.That(r.Final?.Steps == 6, "6 steps");
-                    a.That(r.Final?.Position == new CellPosition(0, 2), "ends at x=2");
+                    a.That(r.Final?.Position == new CellPosition(new YCoordinate(0),new XCoordinate(2)), "ends at x=2");
                     a.That(!r.Blocked.Any(), "no blocked moves");
                 }),
 
@@ -184,7 +185,7 @@ static class Scenarios
                     Checks.Outcome(a, r, RunOutcome.ProgramEnded);
                     a.That(r.Moves.Select(m => m.Direction).SequenceEqual(new[] { Right, Right, Down }),
                         "moves: right, right, down");
-                    a.That(r.Final?.Position == new CellPosition(1, 2), "ends at (1,2)");
+                    a.That(r.Final?.Position == new CellPosition(new YCoordinate(1), new XCoordinate(2)), "ends at (1,2)");
                 }),
 
             new("two-parameters",
@@ -194,7 +195,7 @@ static class Scenarios
                     Checks.Outcome(a, r, RunOutcome.ProgramEnded);
                     a.That(r.Moves.Select(m => m.Direction).SequenceEqual(new[] { Down, Down, Right, Left }),
                         "moves: down, down, right, left");
-                    a.That(r.Final?.Position == new CellPosition(2, 0), "ends at (2,0)");
+                    a.That(r.Final?.Position == new CellPosition(new YCoordinate(2), new XCoordinate(0)), "ends at (2,0)");
                 }),
 
             new("collision-crash",
@@ -549,8 +550,8 @@ sealed class AsciiMaze : IMazeLayout
             for (int x = 0; x < Width; x++)
             {
                 char c = lines[2 * y + 1][4 * x + 2];
-                if (c == 'S') s = new CellPosition(y, x);
-                if (c == 'E') e = new CellPosition(y, x);
+                if (c == 'S') s = new CellPosition(new YCoordinate(y), new XCoordinate(x));
+                if (c == 'E') e = new CellPosition(new YCoordinate(y), new XCoordinate(x));
             }
         Entrance = s ?? throw new ArgumentException("maze has no 'S'");
         Exit = e ?? throw new ArgumentException("maze has no 'E'");
