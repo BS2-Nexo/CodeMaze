@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../../CodeMaze.MazeLang.Core/src/Codemaze.MazeLang.Core.csproj" />
     <ProjectReference Include="../../CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
   </ItemGroup>
 
 </Project>
