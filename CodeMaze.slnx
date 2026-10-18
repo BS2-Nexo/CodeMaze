@@ -2,6 +2,10 @@
   <Project Path="CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
   <Project Path="CodeMaze.MazeGeneration/test/CodeMaze.MazeGeneration.Tests.csproj" />
   <Project Path="CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
+  <Folder Name="/CodeMaze.MazeLang.Parser.Text/" />
+  <Folder Name="/CodeMaze.MazeLang.Parser.Text/demo/">
+    <Project Path="CodeMaze.MazeLang.Parser.Text/demo/CodeMaze.MazeLang.Parser.Text.Demo.csproj" />
+  </Folder>
   <Project Path="CodeMaze.MazeGeneration.Abstractions/src/CodeMaze.MazeGeneration.Abstractions.csproj" />
   <Project Path="CodeMaze.MazeLang.Ast/src/CodeMaze.MazeLang.Ast.csproj" />
   <Project Path="CodeMaze.MazeLang.Compiler/src/CodeMaze.MazeLang.Compiler.csproj" />
@@ -10,6 +14,6 @@
   <Project Path="CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
   <Project Path="CodeMaze.MazeLang.Interpreter/src/CodeMaze.MazeLang.Interpreter.csproj" />
   <Project Path="CodeMaze.MazeLang.Interpreter/demo/CodeMaze.MazeLang.Interpreter.Demo.csproj" />
+  <Project Path="CodeMaze.MazeLang.Parser.Text/src/CodeMaze.MazeLang.Parser.Text.csproj" />
   <Project Path="CodeMaze.Runner/src/CodeMaze.Runner.csproj" />
-  <Project Path="CodeMaze.MazeLang.Compiler.Text/src/CodeMaze.MazeLang.Compiler.Text.csproj" />
 </Solution>
