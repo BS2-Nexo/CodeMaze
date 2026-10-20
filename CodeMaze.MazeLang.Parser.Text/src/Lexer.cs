@@ -1,5 +1,5 @@
 using CodeMaze.MazeLang.Ast;
-using CodeMaze.MazeLang.Compiler;
+using CodeMaze.MazeLang.Compiler.AST;
 
 namespace CodeMaze.MazeLang.Parser.Text;
 

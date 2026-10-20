@@ -1,0 +1,290 @@
+# CodeMaze.Server API
+
+Controlling backend for the maze coding game. The frontend sends code written in the game's DSL,
+the server compiles it, runs it in the interpreter and streams the interpreter's events back over a
+WebSocket.
+
+Four endpoints exist today:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET  /api/capabilities` | What the server supports: languages, difficulties, limits |
+| `GET  /api/maze` | Generate a maze |
+| `POST /api/runs` | Prepare a run: compile the code and settle on a maze |
+| `GET  /api/runs/{runId}/ws` | WebSocket: execute the prepared run and stream its events |
+
+Typical flow: `GET /api/capabilities` once on startup, then per run `POST /api/runs` followed by the WebSocket.
+
+Status: work in progress. No authentication yet.
+
+## Conventions
+
+- JSON everywhere, property names in `camelCase`.
+- Coordinates are zero-based. `y` is the row (row 0 is the top row), `x` is the column (column 0 is the leftmost).
+- A position is always `{ "y": 0, "x": 1 }`.
+- Enums are sent as camelCase strings (`"hard"`, `"exitReached"`).
+- Directions are `up`, `down`, `left`, `right` and `back` (a step back through the walked path).
+
+### Maze format
+
+Used by `GET /api/maze`, by `POST /api/runs` (request and response).
+
+```json
+{
+  "width": 3,
+  "height": 2,
+  "entrance": { "y": 0, "x": 1 },
+  "exit":     { "y": 1, "x": 2 },
+  "cells": [
+    { "y": 0, "x": 0, "walls": ["top", "left"] },
+    { "y": 0, "x": 1, "walls": ["top"] },
+    { "y": 1, "x": 1, "walls": [] }
+  ]
+}
+```
+
+- `walls` contains any of `top`, `right`, `bottom`, `left`.
+- The example is abbreviated. A real maze lists **every** cell (`width * height` of them), row by row.
+  When sending a maze to the server, every cell must appear exactly once, and entrance and exit must lie inside the maze,
+  otherwise the request is rejected with a 400.
+
+---
+
+## `GET /api/capabilities`
+
+Tells the frontend what this server supports, so dropdowns and client-side validation do not have to be hard-coded.
+Call it once on startup.
+
+**200 OK**
+
+```json
+{
+  "languages": [
+    { "name": "de", "displayName": "Deutsch" },
+    { "name": "en", "displayName": "English" }
+  ],
+  "difficulties": ["easy", "medium", "hard"],
+  "defaultDifficulty": "medium",
+  "maze": { "minSize": 2, "maxSize": 100, "maxCells": 10000 },
+  "run": {
+    "maxCodeLength": 20000,
+    "maxLanguageDefinitionLength": 20000,
+    "minStepDelayMs": 0,
+    "maxStepDelayMs": 2000,
+    "defaultStepDelayMs": 100
+  },
+  "interpreter": { "onCollision": "crash", "stopAtExit": true }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `languages` | Languages the server has: the built-in ones (currently `de` and `en`) plus any the operators added. `name` is what you send as `language` in `POST /api/runs`; `displayName` is for the UI. |
+| `difficulties` | Accepted values for `difficulty`. |
+| `maze` | Accepted `size` range, and the maximum number of cells for a maze you send yourself. |
+| `run` | Limits for `POST /api/runs`. |
+| `interpreter.onCollision` | `crash`: running into a wall ends the run (`finished` / `crashed`). `ignore`: a `moveBlocked` event is sent and the run continues. |
+| `interpreter.stopAtExit` | `true`: the run ends as soon as the exit is reached (`finished` / `exitReached`). `false`: the program keeps running. |
+
+Custom languages sent with a run are not listed here; the server only lists the ones it ships with.
+
+---
+
+## `GET /api/maze`
+
+Generates a square maze.
+
+| Query parameter | Type | Required | Notes |
+|---|---|---|---|
+| `size` | int | yes | Width and height in cells. 2 to 100. |
+| `difficulty` | string | no | `easy`, `medium` or `hard`. Default `medium`. |
+
+**200 OK**: a maze (see [Maze format](#maze-format)).
+
+**400 Bad Request**: `size` missing or out of range, or unknown `difficulty`.
+
+```
+GET /api/maze?size=10&difficulty=hard
+```
+
+---
+
+## `POST /api/runs`
+
+First half of starting a run. The server compiles the code right away, so syntax errors are reported here and not over the socket.
+It then settles on the maze (yours, or a generated one) and returns a one-time id for the WebSocket.
+
+### Request
+
+```json
+{
+  "code": "forever\n  go right\nend",
+  "language": "en",
+  "languageDefinition": "name = \"custom\"\n[keywords]\n...",
+  "maze": { "...": "optional, see Maze format" },
+  "size": 10,
+  "difficulty": "medium",
+  "stepDelayMs": 100
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `code` | string | yes | DSL source. Max 20,000 characters. |
+| `language` | string | one of the two | Name of a language the server has (see `GET /api/capabilities`). Case-insensitive. |
+| `languageDefinition` | string | one of the two | The text of a custom language definition (TOML, see below). Max 20,000 characters. |
+| `maze` | maze | no | If present, this maze is used as is and `size` / `difficulty` are ignored. At most 10,000 cells (100 x 100). |
+| `size` | int | if no `maze` | 2 to 100. Square maze of `size` x `size`. |
+| `difficulty` | string | no | `easy`, `medium`, `hard`. Default `medium`. Only used when a maze is generated. |
+| `stepDelayMs` | int | no | Pause after each `moved` event, so the frontend can animate. 0 to 2000, default 100. Out-of-range values are clamped. |
+
+Exactly one of `language` / `languageDefinition` is needed. If both are sent, `languageDefinition` wins and `language` is ignored.
+If neither is sent the request is rejected.
+
+`languageDefinition` is plain text in TOML format that maps the language's words to the keywords of the game:
+
+```toml
+name = "custom"
+display_name = "My language"
+comment_prefix = "#"
+
+[keywords]
+go = "gehe"
+# one entry per keyword, each a string or an array of strings
+```
+
+The definition is validated on every request; problems come back as `language` errors (see below).
+
+### Response, 200 OK
+
+```json
+{
+  "runId": "3f0c8d0e-6a1f-4b3e-9d57-6f3b1c2a9e11",
+  "webSocketPath": "/api/runs/3f0c8d0e-6a1f-4b3e-9d57-6f3b1c2a9e11/ws",
+  "maze": { "...": "the maze that will be used (the generated one if you did not send one)" }
+}
+```
+
+Render the maze from this response. The run id is valid for **60 seconds** and can be used **once**.
+
+### Errors, 400 Bad Request
+
+There are three different error shapes, so check the content type / structure:
+
+1. **Language and code errors** (a broken language definition; syntax errors, unknown functions, wrong argument counts, ...). All errors found are returned at once:
+
+   ```json
+   {
+     "errors": [
+       { "source": "code", "message": "Expected 'end' but found end of program.", "line": 4, "column": 1 }
+     ]
+   }
+   ```
+
+   `source` is `code` for problems in the program, or `language` for problems in a `languageDefinition`.
+   `line` and `column` are 1-based and may be `null` when an error has no position (always the case for `language` errors; the line may be part of the message).
+
+2. **Plain text** for request validation done by the endpoint, e.g. `code is required.`,
+   `Provide a maze, or a size between 2 and 100.`, `The provided maze is too large.`, `Unknown language 'xx'. Available: de, en.`, `Provide a language name or a languageDefinition.`
+
+3. **Standard ASP.NET problem details** (`application/problem+json`) when the body cannot be read at all:
+   malformed JSON, missing `code`, a maze that is structurally invalid, an unknown `difficulty` string.
+
+```bash
+curl -X POST http://localhost:5000/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{ "code": "go right", "size": 5, "difficulty": "easy" }'
+```
+
+---
+
+## `GET /api/runs/{runId}/ws`  (WebSocket)
+
+Second half of starting a run. Open a WebSocket to the `webSocketPath` from `POST /api/runs`
+(same host; `ws://` or `wss://` to match the page).
+
+```js
+const { webSocketPath } = await (await fetch("/api/runs", { /* ... */ })).json();
+const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${webSocketPath}`);
+ws.onmessage = e => handle(JSON.parse(e.data));
+```
+
+The interpreter starts as soon as the socket is open.
+
+**Before the upgrade** the server answers with a plain HTTP status:
+`400` if the request is not a WebSocket request, `404` if the run id is unknown, expired or was already used.
+
+### Server to client
+
+Every message is one JSON event with a `type` field. Order is always: `started`, then any number of
+`moved` / `moveBlocked` / `exitReached`, then exactly one `finished`.
+
+**`started`**: the run begins.
+
+```json
+{ "type": "started", "position": { "y": 0, "x": 1 }, "exit": { "y": 1, "x": 2 } }
+```
+
+**`moved`**: a successful move. `direction` is the requested direction (`back` for a step back). `step` counts successful moves.
+
+```json
+{ "type": "moved", "from": { "y": 0, "x": 1 }, "to": { "y": 0, "x": 2 }, "direction": "right", "step": 1 }
+```
+
+**`moveBlocked`**: a move was not possible. `reason` is `wall` or `noHistory` (nothing to go back to).
+Whether the run continues or ends right after with `finished` / `crashed` is announced by `interpreter.onCollision` in `GET /api/capabilities`.
+
+```json
+{ "type": "moveBlocked", "position": { "y": 0, "x": 2 }, "direction": "up", "reason": "wall" }
+```
+
+**`exitReached`**: the exit cell was reached (sent once). If `interpreter.stopAtExit` in `GET /api/capabilities` is `true`, the run then ends with `finished` / `exitReached`.
+
+```json
+{ "type": "exitReached", "position": { "y": 1, "x": 2 }, "steps": 4 }
+```
+
+**`finished`**: always the last message of a run, also after a cancel. `message` may be `null`.
+
+```json
+{
+  "type": "finished",
+  "outcome": "exitReached",
+  "message": null,
+  "position": { "y": 1, "x": 2 },
+  "steps": 4,
+  "instructions": 37
+}
+```
+
+| `outcome` | Meaning |
+|---|---|
+| `exitReached` | The program reached the exit and the run was stopped there. |
+| `programEnded` | The program ran to its end. |
+| `crashed` | The program ran into a wall (or tried to go back with no history). `message` explains. |
+| `cancelled` | The client cancelled the run. |
+| `limitExceeded` | Too many instructions or too deep recursion (for example an endless loop that never moves). |
+| `fault` | Internal error or malformed compiler output. Should not happen; report it. |
+
+After `finished` the server closes the socket normally.
+
+### Client to server
+
+Only one message exists:
+
+```json
+{ "type": "cancel" }
+```
+
+It can be sent at any time. The interpreter stops and the server sends `finished` with outcome `cancelled`
+(events that were already on their way may still arrive before it). Closing the socket or losing the connection also cancels the run.
+Malformed or unknown messages are ignored; messages larger than 4 KB end the run.
+
+---
+
+## Known limitations
+
+- `difficulty` is accepted and validated, but does not change maze generation yet.
+- No authentication. The run id (an unguessable, one-time value) is the only protection of the WebSocket.
+- Prepared runs are kept in server memory, so the API currently only works with a single server instance.
+- Browsers need the frontend origin to be configured (`Cors:AllowedOrigins`) when it is not served from the same origin as the API.

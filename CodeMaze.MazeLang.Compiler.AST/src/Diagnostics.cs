@@ -1,6 +1,6 @@
 using CodeMaze.MazeLang.Ast;
 
-namespace CodeMaze.MazeLang.Compiler;
+namespace CodeMaze.MazeLang.Compiler.AST;
 
 public sealed record Diagnostic(string Message, SourceLocation? Location)
 {

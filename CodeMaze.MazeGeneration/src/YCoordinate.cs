@@ -1,5 +1,9 @@
+using System.Text.Json.Serialization;
+using CodeMaze.MazeGeneration.Serialization;
+
 namespace CodeMaze.MazeGeneration;
 
+[JsonConverter(typeof(YCoordinateSerializer))]
 public readonly record struct YCoordinate(int Value)
 {
 

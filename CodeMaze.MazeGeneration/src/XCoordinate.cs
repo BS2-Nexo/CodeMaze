@@ -1,5 +1,9 @@
+using System.Text.Json.Serialization;
+using CodeMaze.MazeGeneration.Serialization;
+
 namespace CodeMaze.MazeGeneration;
 
+[JsonConverter(typeof(XCoordinateSerializer))]
 public readonly record struct XCoordinate(int Value)
 {
     public static XCoordinate operator +(XCoordinate first, XCoordinate second)

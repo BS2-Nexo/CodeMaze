@@ -1,7 +1,5 @@
-﻿
-
-using System.Text;
-using CodeMaze.MazeLang.Compiler;
+﻿using System.Text;
+using CodeMaze.MazeLang.Compiler.AST;
 using CodeMaze.MazeLang.Core;
 using CodeMaze.MazeLang.IL;
 using CodeMaze.MazeLang.Parser.Text;
@@ -49,13 +47,13 @@ const string frenchToml = """
 LanguageDefinition french;
 try
 {
-    french = LanguageToml.Parse(frenchToml, "inline-french");
+  french = LanguageToml.Parse(frenchToml, "inline-french");
 }
 catch (LanguageFormatException e)
 {
-    Console.WriteLine("Could not load the French language:");
-    foreach (var err in e.Errors) Console.WriteLine($"  {err}");
-    return;
+  Console.WriteLine("Could not load the French language:");
+  foreach (var err in e.Errors) Console.WriteLine($"  {err}");
+  return;
 }
 
 // ----------------------------------------------------------------- programs
@@ -131,65 +129,65 @@ Show(english, "Compile error demo", """
 // ----------------------------------------------------------------- pipeline
 static void Show(LanguageDefinition language, string title, string source)
 {
-    Console.WriteLine();
-    Console.WriteLine($"=== {title} ===");
-    try
-    {
-        var parser = new MazeParser(language);     // text -> AST
-        var ast = parser.Parse(source);
-        var il = AstCompiler.Compile(ast);     // AST  -> IL
-        Console.WriteLine(Disassemble(il));
-    }
-    catch (ParseException e)
-    {
-        Console.WriteLine("Parse errors:");
-        foreach (var d in e.Diagnostics) Console.WriteLine($"  {d}");
-    }
-    catch (CompileException e)
-    {
-        Console.WriteLine("Compile errors:");
-        foreach (var d in e.Diagnostics) Console.WriteLine($"  {d}");
-    }
+  Console.WriteLine();
+  Console.WriteLine($"=== {title} ===");
+  try
+  {
+    var parser = new MazeParser(language);     // text -> AST
+    var ast = parser.Parse(source);
+    var il = AstCompiler.Compile(ast);     // AST  -> IL
+    Console.WriteLine(Disassemble(il));
+  }
+  catch (ParseException e)
+  {
+    Console.WriteLine("Parse errors:");
+    foreach (var d in e.Diagnostics) Console.WriteLine($"  {d}");
+  }
+  catch (CompileException e)
+  {
+    Console.WriteLine("Compile errors:");
+    foreach (var d in e.Diagnostics) Console.WriteLine($"  {d}");
+  }
 }
 
 // ------------------------------------------------------------ disassembler
 static string Disassemble(ILProgram program)
 {
-    var sb = new StringBuilder();
-    for (int f = 0; f < program.Functions.Count; f++)
+  var sb = new StringBuilder();
+  for (int f = 0; f < program.Functions.Count; f++)
+  {
+    var fn = program.Functions[f];
+    var entry = f == program.EntryPoint ? "  <- entry" : "";
+    sb.AppendLine($"[{f}] {fn.Name}  (params: {fn.ParameterCount}, locals: {fn.LocalCount}){entry}");
+
+    // instructions that some jump lands on get a '>' marker
+    var targets = fn.Code
+        .Where(i => i.Op is OpCode.Jump or OpCode.JumpIfFalse or OpCode.JumpIfZero)
+        .Select(i => i.Operand)
+        .ToHashSet();
+
+    for (int i = 0; i < fn.Code.Count; i++)
     {
-        var fn = program.Functions[f];
-        var entry = f == program.EntryPoint ? "  <- entry" : "";
-        sb.AppendLine($"[{f}] {fn.Name}  (params: {fn.ParameterCount}, locals: {fn.LocalCount}){entry}");
-
-        // instructions that some jump lands on get a '>' marker
-        var targets = fn.Code
-            .Where(i => i.Op is OpCode.Jump or OpCode.JumpIfFalse or OpCode.JumpIfZero)
-            .Select(i => i.Operand)
-            .ToHashSet();
-
-        for (int i = 0; i < fn.Code.Count; i++)
-        {
-            var ins = fn.Code[i];
-            var marker = targets.Contains(i) ? ">" : " ";
-            sb.AppendLine($"  {marker}{i,4}  {ins.Op,-14} {Operand(program, ins)}".TrimEnd());
-        }
-        if (targets.Contains(fn.Code.Count))
-            sb.AppendLine($"  >{fn.Code.Count,4}  (end)");
-        sb.AppendLine();
+      var ins = fn.Code[i];
+      var marker = targets.Contains(i) ? ">" : " ";
+      sb.AppendLine($"  {marker}{i,4}  {ins.Op,-14} {Operand(program, ins)}".TrimEnd());
     }
-    return sb.ToString().TrimEnd();
+    if (targets.Contains(fn.Code.Count))
+      sb.AppendLine($"  >{fn.Code.Count,4}  (end)");
+    sb.AppendLine();
+  }
+  return sb.ToString().TrimEnd();
 }
 
 static string Operand(ILProgram program, Instruction ins) => ins.Op switch
 {
-    OpCode.PushBool => ins.Operand != 0 ? "true" : "false",
-    OpCode.PushInt => ins.Operand.ToString(),
-    OpCode.PushDirection => ((Direction)ins.Operand).ToString(),
-    OpCode.LoadLocal or OpCode.StoreLocal
-        or OpCode.DecLocal => $"slot {ins.Operand}",
-    OpCode.Jump or OpCode.JumpIfFalse
-        or OpCode.JumpIfZero => $"-> {ins.Operand}",
-    OpCode.Call => $"[{ins.Operand}] {program.Functions[ins.Operand].Name}",
-    _ => "",
+  OpCode.PushBool => ins.Operand != 0 ? "true" : "false",
+  OpCode.PushInt => ins.Operand.ToString(),
+  OpCode.PushDirection => ((Direction)ins.Operand).ToString(),
+  OpCode.LoadLocal or OpCode.StoreLocal
+      or OpCode.DecLocal => $"slot {ins.Operand}",
+  OpCode.Jump or OpCode.JumpIfFalse
+      or OpCode.JumpIfZero => $"-> {ins.Operand}",
+  OpCode.Call => $"[{ins.Operand}] {program.Functions[ins.Operand].Name}",
+  _ => "",
 };
