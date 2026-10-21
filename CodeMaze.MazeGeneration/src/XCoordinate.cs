@@ -81,4 +81,16 @@ public readonly record struct XCoordinate(int Value)
     {
         return first < second.Value || first == second.Value;
     }
+
+    public static XCoordinate operator *(XCoordinate left, int right)
+    {
+        return new XCoordinate(left.Value * right);
+    }
+
+    public static XCoordinate operator *(int left, XCoordinate right)
+    {
+        return new XCoordinate(right.Value * left);
+    }
+
+    public static implicit operator int(XCoordinate x) => x.Value;
 }
