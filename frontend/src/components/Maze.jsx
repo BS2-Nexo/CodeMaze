@@ -26,7 +26,7 @@ export function Maze({
       setPlayerWalking((walking) => !walking);
 
       if (tile === 2) {
-        setStatus("game over");
+        setStatus("level complete");
       }
     },
     [player, status, setPlayer, setMoves, setPlayerWalking, setStatus]

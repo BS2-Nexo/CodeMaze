@@ -4,6 +4,7 @@ import { Maze } from "./Maze.jsx";
 import GameOverModal from "./GameOverModal.jsx";
 import GameMenue from "./GameMenue.jsx";
 import GameInput from "./GameInput.jsx";
+import LevelCompleteModal from "./LevelCompleteModal.jsx"
 
 export default function Game() {
   const [player, setPlayer] = useState(startPosition);
@@ -48,6 +49,12 @@ export default function Game() {
       </div>
       {status === "game over" && (
        <GameOverModal 
+       moves={moves}
+       restart={restart}
+       onClose={closeModal}/>
+      )}
+       {status === "level complete" && (
+       <LevelCompleteModal 
        moves={moves}
        restart={restart}
        onClose={closeModal}/>

@@ -1,10 +1,16 @@
 import { useState } from "react";
+import CodeBlockButton from "./buttons/CodeBlocks.jsx"
 
-const codeBlocks = ["code-1", "code-2", "code-3"];
+const KEYWORDS = ["gehe", "wiederhole", "mal", "immer", "wenn", "sonst", "ende",
+            "funktion", "ergebnis", "nicht", "und", "oder"]
+const DIRS =  ["hoch", "runter", "links", "rechts", "rückwärts", "zurück"]
+const SENSORS = ["frei", "besucht"]
+
 
 export default function GameInput({ status }) {
   const [program, setProgram] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [draggedProgramIndex, setDraggedProgramIndex] = useState(null);
 
   function addCodeBlock(code) {
     setProgram((current) => [...current, code]);
@@ -17,7 +23,17 @@ export default function GameInput({ status }) {
 
   function handleProgramDragStart(event, index) {
     event.dataTransfer.setData("application/x-program-index", String(index));
+    event.dataTransfer.setData("text/plain", `program:${index}`);
     event.dataTransfer.effectAllowed = "move";
+    setDraggedProgramIndex(index);
+  }
+
+  function handleProgramDragEnd() {
+    if (draggedProgramIndex !== null) {
+      setProgram((current) => current.filter((_, index) => index !== draggedProgramIndex));
+    }
+    setDraggedProgramIndex(null);
+    setIsDragOver(false);
   }
 
   function handleDrop(event, insertAt = program.length) {
@@ -40,7 +56,7 @@ export default function GameInput({ status }) {
     }
 
     const code = event.dataTransfer.getData("application/x-code-block");
-    if (codeBlocks.includes(code)) {
+    if ([...KEYWORDS, ...DIRS, ...SENSORS].includes(code)) {
       setProgram((current) => {
         const next = [...current];
         next.splice(Math.max(0, Math.min(insertAt, next.length)), 0, code);
@@ -50,27 +66,47 @@ export default function GameInput({ status }) {
   }
 
   return (
-    <section className="col-span-full min-w-0" aria-label="Code input">
-      <div className="flex h-[22px] items-stretch gap-1 mb-3" aria-label="Draggable code blocks">
-        {codeBlocks.map((code, index) => (
-          <button
-            key={code}
-            type="button"
-            draggable
-            onDragStart={(event) => handleDragStart(event, code)}
-            onClick={() => addCodeBlock(code)}
-            aria-label={`Add code block ${index + 1}`}
-            className="min-w-[58px] cursor-grab border border-[#111] bg-[#ffca20]  text-center text-[9px] font-black tracking-[0.08em] text-[#111] active:cursor-grabbing"
-          >
-            CODE
-          </button>
+    <section className="col-span-full 
+    "aria-label="Code input">
+      <div className=" mb-3" aria-label="Draggable code blocks">
+        {KEYWORDS.map((code) => (
+         <CodeBlockButton
+         code={code}
+         type="KEYWORDS"
+        handleDragStart={handleDragStart}
+        addCodeBlock={addCodeBlock}
+         >
+         {code}
+         </CodeBlockButton>
+        ))}
+
+        {DIRS.map((code) => (
+         <CodeBlockButton
+         code={code}
+         type="DIRS"
+        handleDragStart={handleDragStart}
+        addCodeBlock={addCodeBlock}
+         >
+         {code}
+         </CodeBlockButton>
+        ))}
+
+         {SENSORS.map((code) => (
+         <CodeBlockButton
+         code={code}
+         type="SENSORS"
+        handleDragStart={handleDragStart}
+        addCodeBlock={addCodeBlock}
+         >
+         {code}
+         </CodeBlockButton>
         ))}
       </div>
 
       <div
         onDragOver={(event) => {
           event.preventDefault();
-          event.dataTransfer.dropEffect = "copy";
+          event.dataTransfer.dropEffect = draggedProgramIndex === null ? "copy" : "move";
         }}
         onDragEnter={() => setIsDragOver(true)}
         onDragLeave={(event) => {
@@ -80,27 +116,28 @@ export default function GameInput({ status }) {
         }}
         onDrop={handleDrop}
         aria-label="Code input field. Drop code blocks here, or click a block to add it."
-        className={`min-h-[76px] border-4 bg-[#050505] p-2 text-xs text-[#ffca20] max-[640px]:min-h-[58px] ${
+        className={`min-h-[76px] border-4 bg-[#050505] p-1 text-xs text-[#ffca20] max-[640px]:min-h-[58px] ${
           isDragOver ? "border-[#ffca20]" : "border-[#d8dad7]"
         }`}
       >
         {program.length > 0 ? (
-          <div className="flex flex-wrap items-start gap-1 " aria-live="polite">
+          <div className="flex flex-wrap items-start " aria-live="polite">
             {program.map((code, index) => (
               <button
                 key={`${code}-${index}`}
                 type="button"
                 draggable
                 onDragStart={(event) => handleProgramDragStart(event, index)}
+                onDragEnd={handleProgramDragEnd}
                 onDragOver={(event) => {
                   event.preventDefault();
                   event.dataTransfer.dropEffect = "move";
                 }}
                 onDrop={(event) => handleDrop(event, index)}
                 aria-label={`Move code block ${index + 1}`}
-                className="cursor-grab border border-[#ffca20] px-2 py-1 active:cursor-grabbing"
+                className={`m-0.5 p-0.5 text-[10px] cursor-grab font-semibold border border-2 text-center  active:cursor-grabbing ${KEYWORDS.includes(code) ? "border-[#F9AB00] text-[#F9AB00]" : DIRS.includes(code) ? "border-[#35B23A] text-[#35B23A]" : "border-[#639BFF] text-[#639BFF]"}`}
               >
-                {index + 1}. CODE
+                {code}
               </button>
             ))}
           </div>
