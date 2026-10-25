@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CodeMaze.MazeGeneration;
+using CodeMaze.MazeGeneration.Generator;
 using CodeMaze.MazeLang.Compiler;
 using CodeMaze.MazeLang.Interpreter;
 using CodeMaze.Server.Runs;
@@ -31,6 +32,7 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 
 // --- maze generation ---------------------------------------------------------
 //builder.Services.AddSingleton<IMazeGenerator, MazeGenerator>();            // remove if nothing uses it anymore
+builder.Services.AddMazeGeneration(builder.Configuration);
 
 // --- language pipeline -------------------------------------------------------
 builder.Services.AddSingleton(LanguageRegistry.LoadFromDirectory(languageDirectory));   // fails fast on a bad file

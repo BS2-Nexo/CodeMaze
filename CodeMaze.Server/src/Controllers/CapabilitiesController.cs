@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodeMaze.MazeGeneration;
 using CodeMaze.MazeLang.Interpreter;
 using CodeMaze.Server.Runs;
 using Microsoft.AspNetCore.Mvc;

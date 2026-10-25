@@ -30,4 +30,5 @@
   <Project Path="CodeMaze.MazeLang.Parser.Text/src/CodeMaze.MazeLang.Parser.Text.csproj" />
   <Project Path="CodeMaze.Runner/src/CodeMaze.Runner.csproj" />
   <Project Path="CodeMaze.Server/src/CodeMaze.Server.csproj" />
+  <Project Path="CodeMaze.Server/demo/CodeMaze.Server.Demo.csproj" />
 </Solution>

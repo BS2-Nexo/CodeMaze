@@ -6,4 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
+  </ItemGroup>
 </Project>

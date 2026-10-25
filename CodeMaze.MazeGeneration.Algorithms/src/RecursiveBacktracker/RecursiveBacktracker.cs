@@ -1,14 +1,26 @@
 using CodeMaze.MazeGeneration;
+using CodeMaze.MazeGeneration.Abstractions;
 
 namespace CodeMaze.MazeGeneration.Algorithms.RecursiveBacktracker;
 
-public sealed class RecursiveBacktracker
+public sealed class RecursiveBacktracker : IGeneratorAlgorithm
 {
     private readonly Random _pseudoRandomNumbers;
+
+    public RecursiveBacktracker()
+    {
+        _pseudoRandomNumbers = new Random();
+    }
 
     public RecursiveBacktracker(Random rngesus)
     {
         _pseudoRandomNumbers = rngesus;
+    }
+
+    public DraftMaze Generate(int height, int width)
+    {
+        var draft = new DraftMaze(height, width, Walls.All);
+        return Generate(draft);
     }
 
     public DraftMaze Generate(DraftMaze draft)
@@ -35,7 +47,7 @@ public sealed class RecursiveBacktracker
             }
         }
 
-        draft.OpenEntranceAndExit(_pseudoRandomNumbers);
+        draft.PlaceRandomEntranceAndExit(_pseudoRandomNumbers);
 
         return draft;
     }

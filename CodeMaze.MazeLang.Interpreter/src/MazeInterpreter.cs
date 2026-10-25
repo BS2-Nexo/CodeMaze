@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using CodeMaze.MazeGeneration;
 using CodeMaze.MazeLang.Core;
 using CodeMaze.MazeLang.IL;
 
@@ -59,13 +60,13 @@ public sealed class MazeInterpreter
     private bool _exitReported;
     private bool _used;
 
-    public MazeInterpreter(ILProgram program, IMazeLayout layout, InterpreterOptions? options = null)
+    public MazeInterpreter(ILProgram program, Maze maze, InterpreterOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(program);
-        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(maze);
         _program = program;
         _options = options ?? new InterpreterOptions();
-        _maze = new MazeState(layout);
+        _maze = new MazeState(maze);
     }
 
     /// <summary>Live state, e.g. for a UI that wants to inspect visited cells.</summary>

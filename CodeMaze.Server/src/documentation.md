@@ -4,12 +4,13 @@ Controlling backend for the maze coding game. The frontend sends code written in
 the server compiles it, runs it in the interpreter and streams the interpreter's events back over a
 WebSocket.
 
-Four endpoints exist today:
+Five endpoints exist today:
 
 | Endpoint | Purpose |
 |---|---|
 | `GET  /api/capabilities` | What the server supports: languages, difficulties, limits |
-| `GET  /api/maze` | Generate a maze |
+| `GET  /api/maze` | Generate a maze with any configured algorithm for the size (difficulty ignored) |
+| `GET  /api/maze/{difficulty}` | Generate a maze for a specific difficulty |
 | `POST /api/runs` | Prepare a run: compile the code and settle on a maze |
 | `GET  /api/runs/{runId}/ws` | WebSocket: execute the prepared run and stream its events |
 
@@ -27,7 +28,7 @@ Status: work in progress. No authentication yet.
 
 ### Maze format
 
-Used by `GET /api/maze`, by `POST /api/runs` (request and response).
+Used by `GET /api/maze`, `GET /api/maze/{difficulty}`, by `POST /api/runs` (request and response).
 
 ```json
 {
@@ -80,8 +81,9 @@ Call it once on startup.
 | Field | Meaning |
 |---|---|
 | `languages` | Languages the server has: the built-in ones (currently `de` and `en`) plus any the operators added. `name` is what you send as `language` in `POST /api/runs`; `displayName` is for the UI. |
-| `difficulties` | Accepted values for `difficulty`. |
-| `maze` | Accepted `size` range, and the maximum number of cells for a maze you send yourself. |
+| `difficulties` | Accepted values for `difficulty` (the `{difficulty}` segment of `GET /api/maze/{difficulty}` and the `difficulty` field of `POST /api/runs`). |
+| `defaultDifficulty` | Used by `POST /api/runs` when `difficulty` is omitted. `GET /api/maze` has no default: without a difficulty it picks from all difficulties. |
+| `maze` | Accepted `size` range, and the maximum number of cells for a maze you send yourself. A size inside this range can still be answered with `404` by the maze endpoints if no generator is configured for it (see [Maze generation configuration](#maze-generation-configuration)). |
 | `run` | Limits for `POST /api/runs`. |
 | `interpreter.onCollision` | `crash`: running into a wall ends the run (`finished` / `crashed`). `ignore`: a `moveBlocked` event is sent and the run continues. |
 | `interpreter.stopAtExit` | `true`: the run ends as soon as the exit is reached (`finished` / `exitReached`). `false`: the program keeps running. |
@@ -92,20 +94,85 @@ Custom languages sent with a run are not listed here; the server only lists the 
 
 ## `GET /api/maze`
 
-Generates a square maze.
+Generates a square maze for the given size. The difficulty is **not** considered: the server looks up every
+generator algorithm configured for this size, regardless of difficulty, and picks one of them at random.
 
 | Query parameter | Type | Required | Notes |
 |---|---|---|---|
 | `size` | int | yes | Width and height in cells. 2 to 100. |
-| `difficulty` | string | no | `easy`, `medium` or `hard`. Default `medium`. |
+
+```
+GET /api/maze?size=10
+```
+
+**200 OK**: a maze (see [Maze format](#maze-format)).
+
+**400 Bad Request**: `size` missing or out of range.
+
+**404 Not Found**: no generator algorithm is configured for this size. The body is a plain-text message,
+e.g. `No generator algorithm is configured for size 150x150.`
+
+---
+
+## `GET /api/maze/{difficulty}`
+
+Generates a square maze for the given size and difficulty. Only algorithms configured for this exact
+combination are considered; if several match, one of them is picked at random.
+
+| Parameter | Where | Type | Required | Notes |
+|---|---|---|---|---|
+| `difficulty` | path | string | yes | `easy`, `medium` or `hard`. |
+| `size` | query | int | yes | Width and height in cells. 2 to 100. |
+
+```
+GET /api/maze/hard?size=10
+```
 
 **200 OK**: a maze (see [Maze format](#maze-format)).
 
 **400 Bad Request**: `size` missing or out of range, or unknown `difficulty`.
+An unknown difficulty string is rejected by model binding with `application/problem+json`;
+other invalid values are answered with the plain text `Unknown difficulty.`
 
+**404 Not Found**: no generator algorithm is configured for this size and difficulty,
+e.g. `No generator algorithm is configured for size 50x50 with difficulty Easy.`
+
+> **Change from earlier versions:** `difficulty` used to be an optional query parameter of `GET /api/maze`
+> (default `medium`). It is now a path segment, and `GET /api/maze` without it means "any difficulty".
+> `GET /api/maze?size=10&difficulty=hard` no longer selects a difficulty: the parameter is ignored.
+
+---
+
+## Maze generation configuration
+
+Which algorithm serves which size and difficulty is defined by the server operator in `appsettings.json`
+under `MazeGeneration:Mappings`. Algorithms are referred to by the name they were registered with.
+
+```json
+{
+  "MazeGeneration": {
+    "Mappings": [
+      { "Size": { "Min": 1,  "Max": 10  }, "Difficulty": "Easy",   "Algorithm": "RecursiveBacktracker" },
+      { "Size": { "Min": 1,  "Max": 10  }, "Difficulty": "Medium", "Algorithm": "Prims" },
+      { "Size": { "Min": 11, "Max": 30  }, "Difficulty": "Medium", "Algorithm": "Prims" },
+      { "Size": { "Min": 11, "Max": 30  }, "Difficulty": "Medium", "Algorithm": "Kruskals" },
+      {
+        "Height": { "Min": 31, "Max": 100 },
+        "Width":  { "Min": 31, "Max": 200 },
+        "Difficulty": "Hard",
+        "Algorithm": "Kruskals"
+      }
+    ]
+  }
+}
 ```
-GET /api/maze?size=10&difficulty=hard
-```
+
+- `Size` applies to both height and width; `Height` and `Width` override it individually.
+- Ranges are inclusive and may overlap. When several entries match a request, one is picked at random.
+- A size (or size and difficulty) that no entry covers is answered with `404`.
+- The configuration is validated when the server first needs it: an unknown algorithm name, an invalid range
+  or an empty list makes the server fail with a message pointing at the faulty config path.
+- Changes require a server restart.
 
 ---
 
@@ -284,7 +351,8 @@ Malformed or unknown messages are ignored; messages larger than 4 KB end the run
 
 ## Known limitations
 
-- `difficulty` is accepted and validated, but does not change maze generation yet.
+- Maze generation is driven by `MazeGeneration:Mappings` in `appsettings.json`. Sizes or size/difficulty combinations
+  not covered there are answered with `404` by the maze endpoints, even when the size is inside `maze.minSize` to `maze.maxSize`.
 - No authentication. The run id (an unguessable, one-time value) is the only protection of the WebSocket.
 - Prepared runs are kept in server memory, so the API currently only works with a single server instance.
 - Browsers need the frontend origin to be configured (`Cors:AllowedOrigins`) when it is not served from the same origin as the API.
