@@ -1,4 +1,5 @@
 using CodeMaze.MazeGeneration;
+using CodeMaze.MazeGeneration.Abstractions;
 using CodeMaze.MazeGeneration.Algorithms.RecursiveBacktracker;
 using CodeMaze.MazeLang.Compiler;
 using CodeMaze.MazeLang.Parser.Text;
@@ -21,7 +22,8 @@ public sealed record CreateRunRequest(
     Maze? Maze,
     int? Size,
     Difficulty? Difficulty,
-    int? StepDelayMs);
+    int? StepDelayMs,
+    Guid SessionId);
 
 public sealed record CreateRunResponse(Guid RunId, string WebSocketPath, Maze Maze);
 
@@ -36,13 +38,15 @@ public class RunsController : ControllerBase
     private readonly LanguageRegistry _languages;
     private readonly IRunStore _runs;
     private readonly RunSession _session;
+    private readonly IMazeGenerator _generator;
 
-    public RunsController(MazeCompiler compiler, LanguageRegistry languages, IRunStore runs, RunSession session)
+    public RunsController(MazeCompiler compiler, LanguageRegistry languages, IRunStore runs, RunSession session, IMazeGenerator generator)
     {
         _compiler = compiler;
         _languages = languages;
         _runs = runs;
         _session = session;
+        _generator = generator;
     }
 
     /// <summary>
@@ -58,6 +62,9 @@ public class RunsController : ControllerBase
 
         if (request.Code.Length > ApiLimits.MaxCodeLength)
             return BadRequest($"code must not exceed {ApiLimits.MaxCodeLength} characters.");
+
+        if (request.SessionId == Guid.Empty)
+            return BadRequest("sessionId must be a valid GUID.");
 
         // ---- language: custom definition (text) or one of the server's languages (name)
         LanguageDefinition language;
@@ -120,17 +127,12 @@ public class RunsController : ControllerBase
             if (!Enum.IsDefined(difficulty))
                 return BadRequest("Unknown difficulty.");
 
-
-            var draftMaze = new DraftMaze(size, size, Walls.All);
-
-            var rand = new Random();
-            var algo = new RecursiveBacktracker(rand);
-            algo.Generate(draftMaze);
-            maze = draftMaze.Finalize();
+            var draft = _generator.Generate(size, size, difficulty);
+            maze = draft.Finalize();
         }
 
         var delayMs = Math.Clamp(request.StepDelayMs ?? ApiLimits.DefaultStepDelayMs, ApiLimits.MinStepDelayMs, ApiLimits.MaxStepDelayMs);
-        var run = _runs.Add(compiled.Il, maze, TimeSpan.FromMilliseconds(delayMs));
+        var run = _runs.Add(compiled.Il, maze, TimeSpan.FromMilliseconds(delayMs), request.SessionId);
 
         return Ok(new CreateRunResponse(run.Id, $"/api/runs/{run.Id}/ws", maze));
     }

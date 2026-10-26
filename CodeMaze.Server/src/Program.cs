@@ -4,7 +4,10 @@ using CodeMaze.MazeGeneration;
 using CodeMaze.MazeGeneration.Generator;
 using CodeMaze.MazeLang.Compiler;
 using CodeMaze.MazeLang.Interpreter;
+using CodeMaze.Server.Data;
 using CodeMaze.Server.Runs;
+using CodeMaze.Server.Services;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +45,13 @@ builder.Services.AddSingleton(new InterpreterOptions());                    // M
 // --- runs ----------------------------------------------------------------------
 builder.Services.AddSingleton<IRunStore, InMemoryRunStore>();
 builder.Services.AddScoped<RunSession>();
+
+builder.Services.AddDbContext<CodeMazeDbContext>(o =>
+    o.UseNpgsql(builder.Configuration.GetConnectionString("CodeMaze")));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IPickupCodeGenerator, PickupCodeGenerator>();
+builder.Services.AddSingleton<CodeHasher>();
+builder.Services.AddScoped<PlayerAuthService>();
 
 var app = builder.Build();
 
