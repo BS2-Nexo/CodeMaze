@@ -5,6 +5,7 @@ using CodeMaze.MazeLang.IL;
 
 namespace CodeMaze.MazeLang.Compiler.AST;
 
+
 /// <summary>
 /// Translates an AST into IL. Along the way it checks everything the interpreter
 /// should not have to check: unknown functions/parameters, argument count, Back in
