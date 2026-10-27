@@ -7,12 +7,14 @@ public sealed class DraftMaze
     public int Height { get; private set; }
     public CellPosition Entrance { get; set; }
     public CellPosition Exit { get; set; }
+    public Difficulty Difficulty { get; }
 
 
-    public DraftMaze(int height, int width, Walls initialWallLayout)
+    public DraftMaze(int height, int width, Walls initialWallLayout, Difficulty difficulty)
     {
         Width = width;
         Height = height;
+        Difficulty = difficulty;
 
         foreach (var yCoord in Enumerable.Range(0, Height).Select(y => new YCoordinate(y)))
         {
@@ -276,7 +278,10 @@ public sealed class DraftMaze
 
     public Maze Finalize()
     {
-        return new Maze(this);
+        var maze = new Maze(this);
+        var shortestPath = MazeSolver.FindShortestPath(maze);
+        maze.ShortestPath = shortestPath;
+        return maze;
     }
 
 }

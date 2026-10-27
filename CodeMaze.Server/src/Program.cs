@@ -46,12 +46,15 @@ builder.Services.AddSingleton(new InterpreterOptions());                    // M
 builder.Services.AddSingleton<IRunStore, InMemoryRunStore>();
 builder.Services.AddScoped<RunSession>();
 
-builder.Services.AddDbContext<CodeMazeDbContext>(o =>
+builder.Services.AddDbContextFactory<CodeMazeDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("CodeMaze")));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPickupCodeGenerator, PickupCodeGenerator>();
 builder.Services.AddSingleton<CodeHasher>();
 builder.Services.AddScoped<PlayerAuthService>();
+builder.Services.AddSingleton<PlayerSessionStore>();
+builder.Services.AddSingleton<RunResultQueue>();
+builder.Services.AddHostedService<RunScoringService>();
 
 var app = builder.Build();
 

@@ -10,5 +10,5 @@ public record SubmitScoreRequest(
     int Score,
     [Required, StringLength(20000)] string Program);
 
-public record ReserveResponse(int PlayerId, string PublicId, string DisplayName, string Code);
+public record ReserveResponse(int PlayerId, string PublicId, string DisplayName, string Code, Guid SessionId);
 public record LeaderboardEntry(int Rank, string PublicId, string DisplayName, int Score, DateTimeOffset AchievedAt);

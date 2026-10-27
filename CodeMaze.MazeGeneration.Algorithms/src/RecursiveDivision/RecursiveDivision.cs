@@ -24,9 +24,9 @@ public sealed class RecursiveDivision : IGeneratorAlgorithm
         _pseudoRandomNumbers = rngesus;
     }
 
-    public DraftMaze Generate(int height, int width)
+    public DraftMaze Generate(int height, int width, Difficulty difficulty)
     {
-        var draft = new DraftMaze(height, width, Walls.None);
+        var draft = new DraftMaze(height, width, Walls.None, difficulty);
         return Generate(draft);
     }
 

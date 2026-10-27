@@ -3,8 +3,8 @@ namespace CodeMaze.MazeGeneration.Algorithms;
 public sealed record MazeScoreInput(
     int Size,             // square maze: side length
     Difficulty Difficulty,
-    int OptimalSteps,     // MazeView.ShortestSteps()
-    int ActualSteps,      // steps counted by the run
+    long OptimalSteps,     // MazeView.ShortestSteps()
+    long ActualSteps,      // steps counted by the run
     bool ExitReached);
 
 public sealed record MazeScore(uint Points, double Efficiency, bool Perfect);

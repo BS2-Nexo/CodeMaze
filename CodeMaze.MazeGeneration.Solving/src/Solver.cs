@@ -1,5 +1,3 @@
-using CodeMaze.MazeGeneration;
-
 namespace CodeMaze.MazeGeneration.Solving;
 
 public static class MazeSolver

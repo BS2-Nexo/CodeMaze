@@ -1,7 +1,9 @@
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CodeMaze.MazeGeneration.Algorithms;
 using CodeMaze.MazeLang.Interpreter;
+using CodeMaze.Server.Services;
 
 namespace CodeMaze.Server.Runs;
 
@@ -32,29 +34,23 @@ public sealed class RunSession
 
     private readonly InterpreterOptions _options;
     private readonly ILogger<RunSession> _logger;
+    private readonly RunResultQueue _queue;
 
-    public RunSession(InterpreterOptions options, ILogger<RunSession> logger)
+    public RunSession(InterpreterOptions options, ILogger<RunSession> logger, RunResultQueue results)
     {
         _options = options;
         _logger = logger;
+        _queue = results;
     }
 
     public async Task RunAsync(WebSocket socket, PendingRun run, CancellationToken requestAborted)
     {
-        // Cancelled by a client "cancel" message, a client close, or a dropped connection.
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
-
-        // Listens for cancel / close for the whole lifetime of the run.
         var receiveTask = ReceiveLoopAsync(socket, runCts, requestAborted);
-
-        // Assumes Maze implements IMazeLayout; otherwise adapt it here.
         var interpreter = new MazeInterpreter(run.Program, run.Maze, _options);
 
         try
         {
-            // Cancellation does not throw inside the interpreter: it ends the stream with
-            // Finished(Cancelled). So sends use requestAborted (not runCts), otherwise that
-            // final event could never be delivered after a client cancel.
             await foreach (var evt in interpreter.RunAsync(run.StepDelay, runCts.Token))
             {
                 await SendAsync(socket, evt, requestAborted);
@@ -62,7 +58,6 @@ public sealed class RunSession
         }
         catch (OperationCanceledException)
         {
-            // Client disconnected mid-run; nobody left to tell.
             runCts.TryCancel();
         }
         catch (WebSocketException ex)
@@ -86,8 +81,15 @@ public sealed class RunSession
                 catch (WebSocketException) { /* client already gone */ }
             }
         }
+        finally
+        {
+            if (interpreter.TryGetRunStatistics(out var stats))
+            {
+                _queue.TryEnqueue(new CompletedRun(run, stats));
+            }
 
-        await CloseAsync(socket, receiveTask);
+            await CloseAsync(socket, receiveTask);
+        }
     }
 
     private static async Task SendAsync(WebSocket socket, InterpreterEvent evt, CancellationToken ct)

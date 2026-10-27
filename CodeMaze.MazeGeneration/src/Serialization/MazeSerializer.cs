@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace CodeMaze.MazeGeneration.Serialization;
 
 /// <summary>
-/// JSON format and convenience API for Labyrinth in one class.
+/// JSON format and convenience API for Maze in one class.
 ///
 /// As a JsonConverter it defines the JSON shape:
 ///
@@ -18,15 +18,18 @@ namespace CodeMaze.MazeGeneration.Serialization;
 ///       { "y": 0, "x": 0, "walls": ["top", "left"] },
 ///       { "y": 0, "x": 1, "walls": ["top"] },
 ///       { "y": 1, "x": 1, "walls": [] }
-///     ]
+///     ],
+///     "shortestPath": [ { "y": 0, "x": 1 }, { "y": 1, "x": 1 }, { "y": 1, "x": 2 } ]
 ///   }
 ///
+/// "shortestPath" is optional. Positions (entrance, exit, path items) are written and
+/// read through CellPositionSerializer, which is picked up via the attribute on CellPosition.
+///
 /// The static members (ToJson, FromJson, Save, ...) are the char/string/file
-/// based entry points and go through the converter via the attribute on Labyrinth.
+/// based entry points and go through the converter via the attribute on Maze.
 /// </summary>
 public sealed class MazeSerializer : JsonConverter<Maze>
 {
-
     private static readonly JsonSerializerOptions Compact = new();
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
@@ -93,126 +96,188 @@ public sealed class MazeSerializer : JsonConverter<Maze>
     }
 
 
-    internal sealed record PositionDto(int Y, int X);
-    internal sealed record CellDto(int Y, int X, string[] Walls);
-    internal sealed record LabyrinthDto(
-        int Width,
-        int Height,
-        PositionDto Entrance,
-        PositionDto Exit,
-        List<CellDto> Cells);
-
-    private static readonly JsonSerializerOptions DtoOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-    };
-
     public override void Write(Utf8JsonWriter writer, Maze maze, JsonSerializerOptions options)
     {
-        var cells = new List<CellDto>(maze.Width * maze.Height);
+        writer.WriteStartObject();
+        writer.WriteNumber("width", maze.Width);
+        writer.WriteNumber("height", maze.Height);
+
+        writer.WritePropertyName("entrance");
+        JsonSerializer.Serialize(writer, maze.Entrance, options);
+        writer.WritePropertyName("exit");
+        JsonSerializer.Serialize(writer, maze.Exit, options);
+
+        writer.WriteStartArray("cells");
+        var cells = maze.Cells;
         for (var y = 0; y < maze.Height; y++)
         {
             for (var x = 0; x < maze.Width; x++)
             {
-                cells.Add(new CellDto(y, x, ToNames(maze.Cells[y * maze.Width + x])));
+                WriteCell(writer, y, x, cells[y * maze.Width + x]);
             }
         }
+        writer.WriteEndArray();
 
-        var dto = new LabyrinthDto(
-            maze.Width,
-            maze.Height,
-            new PositionDto(maze.Entrance.Y.Value, maze.Entrance.X.Value),
-            new PositionDto(maze.Exit.Y.Value, maze.Exit.X.Value),
-            cells);
+        if (maze.ShortestPath is { } path)
+        {
+            writer.WritePropertyName("shortestPath");
+            JsonSerializer.Serialize(writer, path, options);
+        }
 
-        JsonSerializer.Serialize(writer, dto, DtoOptions);
+        writer.WriteEndObject();
     }
 
     public override Maze Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        var dto = JsonSerializer.Deserialize<LabyrinthDto>(ref reader, DtoOptions)
-            ?? throw new JsonException("Empty maze document.");
+        if (reader.TokenType != JsonTokenType.StartObject)
+            throw new JsonException("A maze must be a JSON object.");
 
-        if (dto.Width <= 0 || dto.Height <= 0)
+        int? width = null, height = null;
+        CellPosition? entrance = null, exit = null;
+        List<(int Y, int X, Walls Walls)>? rawCells = null;
+        List<CellPosition>? path = null;
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
+            if (reader.TokenType != JsonTokenType.PropertyName)
+                throw new JsonException("Unexpected token in maze.");
+
+            var name = reader.GetString();
+            reader.Read();
+
+            if (Is(name, "width")) width = reader.GetInt32();
+            else if (Is(name, "height")) height = reader.GetInt32();
+            else if (Is(name, "entrance")) entrance = JsonSerializer.Deserialize<CellPosition>(ref reader, options);
+            else if (Is(name, "exit")) exit = JsonSerializer.Deserialize<CellPosition>(ref reader, options);
+            else if (Is(name, "cells")) rawCells = ReadCells(ref reader);
+            else if (Is(name, "shortestPath")) path = JsonSerializer.Deserialize<List<CellPosition>>(ref reader, options);
+            else reader.Skip();
+        }
+
+        if (width is null || height is null)
+            throw new JsonException("Missing width or height.");
+        if (width <= 0 || height <= 0)
             throw new JsonException("Width and height must be positive.");
-        }
-
-        if (dto.Entrance is null || dto.Exit is null || dto.Cells is null)
-        {
+        if (entrance is null || exit is null || rawCells is null)
             throw new JsonException("Missing entrance, exit or cells.");
-        }
 
-        var cellCount = dto.Width * dto.Height;
-        if (dto.Cells.Count != cellCount)
-        {
-            throw new JsonException($"Expected {cellCount} cells but found {dto.Cells.Count}.");
-        }
+        var cellCount = checked(width.Value * height.Value);
+        if (rawCells.Count != cellCount)
+            throw new JsonException($"Expected {cellCount} cells but found {rawCells.Count}.");
 
         var cells = new Walls[cellCount];
         var seen = new bool[cellCount];
 
-        foreach (var cell in dto.Cells)
+        foreach (var (y, x, walls) in rawCells)
         {
-            if (cell is null || cell.Y < 0 || cell.Y >= dto.Height || cell.X < 0 || cell.X >= dto.Width)
-            {
-                throw new JsonException($"Cell ({cell?.Y}, {cell?.X}) lies outside the maze.");
-            }
+            if (y < 0 || y >= height || x < 0 || x >= width)
+                throw new JsonException($"Cell ({y}, {x}) lies outside the maze.");
 
-            var i = cell.Y * dto.Width + cell.X;
+            var i = y * width.Value + x;
             if (seen[i])
-            {
-                throw new JsonException($"Cell ({cell.Y}, {cell.X}) is listed more than once.");
-            }
+                throw new JsonException($"Cell ({y}, {x}) is listed more than once.");
 
             seen[i] = true;
-            cells[i] = FromNames(cell.Walls, cell.Y, cell.X);
+            cells[i] = walls;
         }
 
-        return new Maze(
-            dto.Height,
-            dto.Width,
-            cells,
-            ToPosition(dto.Entrance, dto, "entrance"),
-            ToPosition(dto.Exit, dto, "exit"));
-    }
+        var maze = new Maze(height.Value, width.Value, cells, entrance.Value, exit.Value);
 
-    private static string[] ToNames(Walls walls)
-    {
-        var names = new List<string>(4);
-        if (walls.HasFlag(Walls.Top)) names.Add("top");
-        if (walls.HasFlag(Walls.Right)) names.Add("right");
-        if (walls.HasFlag(Walls.Bottom)) names.Add("bottom");
-        if (walls.HasFlag(Walls.Left)) names.Add("left");
-        return names.ToArray();
-    }
+        if (!maze.Contains(entrance.Value)) throw new JsonException("The entrance lies outside the maze.");
+        if (!maze.Contains(exit.Value)) throw new JsonException("The exit lies outside the maze.");
 
-    private static Walls FromNames(string[]? names, int y, int x)
-    {
-        var walls = Walls.None;
-        foreach (var name in names ?? [])
+        if (path is not null)
         {
+            foreach (var position in path)
+            {
+                if (!maze.Contains(position))
+                    throw new JsonException($"Shortest path position {position} lies outside the maze.");
+            }
+
+            maze.ShortestPath = path;
+        }
+
+        return maze;
+    }
+
+    private static bool Is(string? name, string expected)
+        => string.Equals(name, expected, StringComparison.OrdinalIgnoreCase);
+
+    private static void WriteCell(Utf8JsonWriter writer, int y, int x, Walls walls)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("y", y);
+        writer.WriteNumber("x", x);
+        writer.WriteStartArray("walls");
+        if (walls.HasFlag(Walls.Top)) writer.WriteStringValue("top");
+        if (walls.HasFlag(Walls.Right)) writer.WriteStringValue("right");
+        if (walls.HasFlag(Walls.Bottom)) writer.WriteStringValue("bottom");
+        if (walls.HasFlag(Walls.Left)) writer.WriteStringValue("left");
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    private static List<(int Y, int X, Walls Walls)> ReadCells(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+            throw new JsonException("cells must be an array.");
+
+        var result = new List<(int, int, Walls)>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            result.Add(ReadCell(ref reader));
+        }
+
+        return result;
+    }
+
+    private static (int Y, int X, Walls Walls) ReadCell(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+            throw new JsonException("A cell must be an object.");
+
+        int? y = null, x = null;
+        var walls = Walls.None;
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.TokenType != JsonTokenType.PropertyName)
+                throw new JsonException("Unexpected token in cell.");
+
+            var name = reader.GetString();
+            reader.Read();
+
+            if (Is(name, "y")) y = reader.GetInt32();
+            else if (Is(name, "x")) x = reader.GetInt32();
+            else if (Is(name, "walls")) walls = ReadWalls(ref reader);
+            else reader.Skip();
+        }
+
+        if (y is null || x is null)
+            throw new JsonException("A cell needs both y and x.");
+
+        return (y.Value, x.Value, walls);
+    }
+
+    private static Walls ReadWalls(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+            throw new JsonException("walls must be an array.");
+
+        var walls = Walls.None;
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            var name = reader.GetString();
             walls |= name?.ToLowerInvariant() switch
             {
                 "top" => Walls.Top,
                 "right" => Walls.Right,
                 "bottom" => Walls.Bottom,
                 "left" => Walls.Left,
-                _ => throw new JsonException($"Cell ({y}, {x}): unknown wall '{name}'."),
+                _ => throw new JsonException($"Unknown wall '{name}'."),
             };
         }
 
         return walls;
-    }
-
-    private static CellPosition ToPosition(PositionDto p, LabyrinthDto dto, string name)
-    {
-        if (p.Y < 0 || p.Y >= dto.Height || p.X < 0 || p.X >= dto.Width)
-        {
-            throw new JsonException($"The {name} lies outside the maze.");
-        }
-
-        return new CellPosition(new YCoordinate(p.Y), new XCoordinate(p.X));
     }
 }

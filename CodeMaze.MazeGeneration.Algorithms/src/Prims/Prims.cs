@@ -24,9 +24,9 @@ public sealed class Prims : IGeneratorAlgorithm
         _pseudoRandomNumbers = rngesus;
     }
 
-    public DraftMaze Generate(int height, int width)
+    public DraftMaze Generate(int height, int width, Difficulty difficulty)
     {
-        var draft = new DraftMaze(height, width, Walls.All);
+        var draft = new DraftMaze(height, width, Walls.All, difficulty);
         return Generate(draft);
     }
 

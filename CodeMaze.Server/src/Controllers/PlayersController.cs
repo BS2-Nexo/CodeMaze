@@ -5,9 +5,9 @@ namespace CodeMaze.Server.Controllers;
 
 [ApiController]
 [Route("api/players")]
-public class PlayersController(PlayerAuthService auth) : ControllerBase
+public class PlayersController(PlayerAuthService auth, PlayerSessionStore sessions) : ControllerBase
 {
-    /// <summary>Reserve a name. 409 = name is taken, so ask the player for their code instead.</summary>
+    /// <summary>Reserve a name. Returns a session key right away. 409 = name is taken, so ask the player for their code instead.</summary>
     [HttpPost("reserve")]
     public async Task<IActionResult> Reserve(ReserveRequest req, CancellationToken ct)
     {
@@ -16,7 +16,12 @@ public class PlayersController(PlayerAuthService auth) : ControllerBase
         {
             ReserveResult.InvalidName => BadRequest(new { error = "invalid_name" }),
             ReserveResult.Taken => Conflict(new { error = "name_taken" }),
-            _ => Ok(new ReserveResponse(r.Player!.Id, $"#{r.Player.Id:000}", r.Player.DisplayName, r.Code!))
+            _ => Ok(new ReserveResponse(
+                r.Player!.Id,
+                $"#{r.Player.Id:000}",
+                r.Player.DisplayName,
+                r.Code!,
+                sessions.Create(r.Player)))
         };
     }
 
@@ -27,14 +32,21 @@ public class PlayersController(PlayerAuthService auth) : ControllerBase
             ? NoContent()
             : BadRequest(new { error = "confirmation_failed" });
 
-    /// <summary>Returning player proves ownership of a name.</summary>
+    /// <summary>Returning player proves ownership of a name. Returns a session key.</summary>
     [HttpPost("verify")]
     public async Task<IActionResult> Verify(CodeRequest req, CancellationToken ct)
     {
         var o = await auth.VerifyAsync(req.DisplayName, req.Code, ct);
-        return o.Result == VerifyResult.Ok
-            ? Ok(new { playerId = o.Player!.Id, publicId = $"#{o.Player.Id:000}", displayName = o.Player.DisplayName })
-            : ToFailure(this, o);
+        if (o.Result != VerifyResult.Ok)
+            return ToFailure(this, o);
+
+        return Ok(new
+        {
+            sessionId = sessions.Create(o.Player!),
+            playerId = o.Player!.Id,
+            publicId = $"#{o.Player.Id:000}",
+            displayName = o.Player.DisplayName
+        });
     }
 
     internal static IActionResult ToFailure(ControllerBase c, VerifyOutcome o) => o.Result switch
