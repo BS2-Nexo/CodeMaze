@@ -16,7 +16,7 @@ public class ScoresController(CodeMazeDbContext db) : ControllerBase
     /// </summary>
     [HttpGet("leaderboard")]
     public async Task<IActionResult> Leaderboard(
-        [FromQuery] int top = 10,
+        [FromQuery] int top,
         CancellationToken ct = default)
     {
         if (top < 0)
@@ -25,7 +25,6 @@ public class ScoresController(CodeMazeDbContext db) : ControllerBase
         }
 
         var query = db.Scores
-            .Where(s => s.Player.ConfirmedAt != null)
             .GroupBy(s => new { s.Session, s.PlayerId, s.Player.DisplayName })
             .Select(g => new
             {

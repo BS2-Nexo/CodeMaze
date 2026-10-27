@@ -101,6 +101,7 @@ public sealed class MazeSerializer : JsonConverter<Maze>
         writer.WriteStartObject();
         writer.WriteNumber("width", maze.Width);
         writer.WriteNumber("height", maze.Height);
+        writer.WriteString("difficulty", maze.Difficulty.ToString());
 
         writer.WritePropertyName("entrance");
         JsonSerializer.Serialize(writer, maze.Entrance, options);
@@ -133,6 +134,7 @@ public sealed class MazeSerializer : JsonConverter<Maze>
             throw new JsonException("A maze must be a JSON object.");
 
         int? width = null, height = null;
+        Difficulty? difficulty = null;
         CellPosition? entrance = null, exit = null;
         List<(int Y, int X, Walls Walls)>? rawCells = null;
         List<CellPosition>? path = null;
@@ -148,6 +150,18 @@ public sealed class MazeSerializer : JsonConverter<Maze>
             if (Is(name, "width")) width = reader.GetInt32();
             else if (Is(name, "height")) height = reader.GetInt32();
             else if (Is(name, "entrance")) entrance = JsonSerializer.Deserialize<CellPosition>(ref reader, options);
+            else if (Is(name, "difficulty"))
+            {
+                var value = reader.GetString();
+
+                if (!Enum.TryParse<Difficulty>(value, ignoreCase: true, out var parsed)
+                    || !Enum.IsDefined(parsed))
+                {
+                    throw new JsonException($"Unknown difficulty '{value}'.");
+                }
+
+                difficulty = parsed;
+            }
             else if (Is(name, "exit")) exit = JsonSerializer.Deserialize<CellPosition>(ref reader, options);
             else if (Is(name, "cells")) rawCells = ReadCells(ref reader);
             else if (Is(name, "shortestPath")) path = JsonSerializer.Deserialize<List<CellPosition>>(ref reader, options);
@@ -156,6 +170,8 @@ public sealed class MazeSerializer : JsonConverter<Maze>
 
         if (width is null || height is null)
             throw new JsonException("Missing width or height.");
+        if (difficulty is null)
+            throw new JsonException("Missing difficulty.");
         if (width <= 0 || height <= 0)
             throw new JsonException("Width and height must be positive.");
         if (entrance is null || exit is null || rawCells is null)
@@ -181,7 +197,7 @@ public sealed class MazeSerializer : JsonConverter<Maze>
             cells[i] = walls;
         }
 
-        var maze = new Maze(height.Value, width.Value, cells, entrance.Value, exit.Value);
+        var maze = new Maze(height.Value, width.Value, cells, entrance.Value, exit.Value, difficulty.Value);
 
         if (!maze.Contains(entrance.Value)) throw new JsonException("The entrance lies outside the maze.");
         if (!maze.Contains(exit.Value)) throw new JsonException("The exit lies outside the maze.");

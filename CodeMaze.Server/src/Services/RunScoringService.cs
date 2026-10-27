@@ -60,6 +60,7 @@ public sealed class RunScoringService(
             Perfect = score.Perfect,
             Session = run.SessionId,
             DSLProgram = "PLACEHOLDERVALUE",
+            CreatedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync(ct);
     }

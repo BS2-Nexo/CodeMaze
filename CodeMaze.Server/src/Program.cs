@@ -27,11 +27,15 @@ builder.Services.AddControllers()
         // Lets the frontend send "difficulty": "hard" instead of a number.
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
+/*
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 {
     if (allowedOrigins.Length > 0)
         policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
 }));
+*/
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+    policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
 // --- maze generation ---------------------------------------------------------
 //builder.Services.AddSingleton<IMazeGenerator, MazeGenerator>();            // remove if nothing uses it anymore

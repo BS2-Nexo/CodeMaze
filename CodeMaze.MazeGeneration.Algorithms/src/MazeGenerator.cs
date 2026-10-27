@@ -49,7 +49,7 @@ public class MazeGenerator : IMazeGenerator
 
     private static DraftMaze Run(GeneratorMapping mapping, int height, int width)
     {
-        var draft = mapping.Algorithm.Generate(height, width);
+        var draft = mapping.Algorithm.Generate(height, width, mapping.Difficulty);
         return draft;
     }
 }
