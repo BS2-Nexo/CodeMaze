@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using CodeMaze.MazeGeneration;
 using CodeMaze.MazeLang.Core;
 using CodeMaze.MazeLang.IL;
 
@@ -58,14 +60,18 @@ public sealed class MazeInterpreter
     private long _instructions;
     private bool _exitReported;
     private bool _used;
+    private readonly HashSet<CellPosition> _visited = new();
+    private int _revisitedMoves;
+    private int _blockedMoves;
+    private Finished? _result;
 
-    public MazeInterpreter(ILProgram program, IMazeLayout layout, InterpreterOptions? options = null)
+    public MazeInterpreter(ILProgram program, Maze maze, InterpreterOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(program);
-        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(maze);
         _program = program;
         _options = options ?? new InterpreterOptions();
-        _maze = new MazeState(layout);
+        _maze = new MazeState(maze);
     }
 
     /// <summary>Live state, e.g. for a UI that wants to inspect visited cells.</summary>
@@ -117,6 +123,7 @@ public sealed class MazeInterpreter
 
     private IEnumerable<InterpreterEvent> Execute(CancellationToken ct)
     {
+        _visited.Add(_maze.Position);
         yield return new Started(_maze.Position, _maze.Exit);
 
         var entry = _program.Functions[_program.EntryPoint];
@@ -167,7 +174,7 @@ public sealed class MazeInterpreter
     }
 
     private Finished Finish(RunOutcome outcome, string? message) =>
-        new(outcome, message, _maze.Position, _maze.Steps, _instructions);
+        _result = new Finished(outcome, message, _maze.Position, _maze.Steps, _instructions);
 
     private static Value[] NewLocals(ILFunction fn)
     {
@@ -244,14 +251,18 @@ public sealed class MazeInterpreter
     {
         if (!_maze.TryMove(dir, out var from, out var to))
         {
+            _blockedMoves++;
             var reason = dir == Direction.Back ? BlockReason.NoHistory : BlockReason.Wall;
             output.Add(new MoveBlocked(from, dir, reason));
             if (_options.OnCollision == CollisionBehavior.Crash)
                 throw new StopRun(RunOutcome.Crashed, reason == BlockReason.Wall
                     ? $"Crash! There is a wall ({dir})."
                     : "Crash! There is no step to go back to.");
-            return;                       // Ignore: no-op, continue
+            return;
         }
+
+        if (!_visited.Add(to))
+            _revisitedMoves++;
 
         output.Add(new Moved(from, to, dir, _maze.Steps));
 
@@ -262,5 +273,36 @@ public sealed class MazeInterpreter
             if (_options.StopAtExit)
                 throw new StopRun(RunOutcome.ExitReached, null);
         }
+    }
+    /// <summary>
+    /// Statistics of the completed run. Throws if the run has not finished yet
+    /// (i.e. the event stream was not enumerated to its final Finished event).
+    /// </summary>
+    public RunStatistics GetRunStatistics()
+    {
+        if (_result is not { } r)
+            throw new InvalidOperationException("The run has not finished yet.");
+
+        return new RunStatistics(
+            r.Outcome,
+            r.Message,
+            _exitReported,
+            r.Position,
+            r.Steps,
+            _visited.Count,
+            _revisitedMoves,
+            _blockedMoves,
+            r.Instructions);
+    }
+    public bool TryGetRunStatistics([NotNullWhen(true)] out RunStatistics? stats)
+    {
+        if (_result is null)
+        {
+            stats = null;
+            return false;
+        }
+
+        stats = GetRunStatistics();
+        return true;
     }
 }

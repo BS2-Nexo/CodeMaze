@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CodeMaze</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@400;600&family=Spline+Sans:wght@400;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --paper: #e9eef2;
+            --panel: #f7f9fb;
+            --ink: #1c2b3a;
+            --muted: #5d6f80;
+            --line: #c5d0da;
+            --start: #1f9d55;
+            --end: #d6322f;
+            --trail: rgba(60, 120, 180, .16);
+            --accent: #2a5d8f;
+            --mono: "Spline Sans Mono", ui-monospace, Menlo, Consolas, monospace;
+            --sans: "Spline Sans", system-ui, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font: 14px/1.45 var(--sans);
+            color: var(--ink);
+            background: var(--paper);
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 16px;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        @media (max-width: 860px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        aside {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        fieldset {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            border-radius: 6px;
+            padding: 10px 12px 12px;
+            margin: 0;
+        }
+
+        legend {
+            font-weight: 600;
+            padding: 0 6px;
+        }
+
+        label {
+            display: block;
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            font: inherit;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            background: #fff;
+            color: var(--ink);
+        }
+
+        textarea {
+            font-family: var(--mono);
+            font-size: 12px;
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: end;
+        }
+
+        .row>* {
+            flex: 1;
+        }
+
+        button {
+            padding: 7px 10px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        button.ghost {
+            background: transparent;
+            color: var(--accent);
+        }
+
+        button:disabled {
+            opacity: .45;
+            cursor: default;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .check {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            color: var(--ink);
+        }
+
+        .check input {
+            width: auto;
+        }
+
+        #stage {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        #canvasWrap {
+            flex: 1;
+            min-height: 420px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #status {
+            font-family: var(--mono);
+            font-size: 13px;
+            padding: 8px 10px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            white-space: pre-wrap;
+        }
+
+        #status.error {
+            color: var(--end);
+        }
+
+        #status.ok {
+            color: var(--start);
+        }
+
+        #code {
+            font-family: var(--mono);
+            font-size: 20px;
+            letter-spacing: .08em;
+            font-weight: 600;
+            margin-top: 6px;
+            user-select: all;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        td,
+        th {
+            text-align: left;
+            padding: 3px 4px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 12px;
+            margin: 6px 0 0;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <aside>
+            <fieldset>
+                <legend>Server</legend>
+                <label for="baseUrl">Base URL (empty = same origin)</label>
+                <input id="baseUrl" placeholder="https://localhost:5001">
+                <button id="btnCaps" class="ghost">Load capabilities</button>
+            </fieldset>
+
+            <fieldset>
+                <legend>Player</legend>
+                <label for="playerName">Display name</label>
+                <input id="playerName" autocomplete="off">
+                <div class="row">
+                    <button id="btnReserve">Reserve name</button>
+                    <button id="btnVerify" class="ghost">I have a code</button>
+                </div>
+                <div id="codeBox" hidden>
+                    <label for="playerCode">Code</label>
+                    <input id="playerCode" autocomplete="off">
+                    <div class="row">
+                        <button id="btnConfirm">Confirm</button>
+                        <button id="btnVerifyGo" class="ghost">Verify</button>
+                    </div>
+                </div>
+                <div id="code"></div>
+                <p class="hint" id="playerInfo">Playing as a guest session.</p>
+                <button id="btnLogout" class="ghost">Log out (forget session)</button>
+            </fieldset>
+
+            <fieldset>
+                <legend>Run</legend>
+                <label for="language">Language</label>
+                <select id="language"></select>
+                <div class="row">
+                    <div><label for="size">Size</label><input id="size" type="number" value="12"></div>
+                    <div><label for="difficulty">Difficulty</label><select id="difficulty"></select></div>
+                    <div><label for="delay">Step ms</label><input id="delay" type="number" value="150"></div>
+                </div>
+                <label for="src">Code</label>
+                <textarea id="src" spellcheck="false"></textarea>
+                <label class="check"><input type="checkbox" id="reuse"> Reuse the maze shown (send it with the
+                    run)</label>
+                <div class="row">
+                    <button id="btnRun">Run</button>
+                    <button id="btnCancel" class="ghost" disabled>Cancel</button>
+                </div>
+                <button id="btnPreview" class="ghost">Preview a new maze</button>
+            </fieldset>
+
+            <fieldset>
+                <legend>Leaderboard</legend>
+                <button id="btnBoard" class="ghost" style="margin-top:0">Refresh</button>
+                <table id="board"></table>
+            </fieldset>
+        </aside>
+
+        <section id="stage">
+            <div id="canvasWrap"><canvas id="cv" aria-label="Maze"></canvas></div>
+            <div id="status">Preview or run to see a maze.</div>
+        </section>
+    </main>
+
+    <script>
+        /* =====================================================================
+           API CLIENT  (works for every controller you posted)
+           ===================================================================== */
+        class ApiError extends Error {
+            constructor(status, body) {
+                super(ApiError.describe(status, body));
+                this.status = status;
+                this.body = body;
+            }
+            static describe(status, body) {
+                if (typeof body === "string") return body || `HTTP ${status}`;
+                if (body?.errors) {
+                    return body.errors.map(e => {
+                        const at = e.line != null ? ` (line ${e.line}${e.column != null ? ":" + e.column : ""})` : "";
+                        return `[${e.source}] ${e.message}${at}`;
+                    }).join("\n");
+                }
+                if (body?.error) return body.error + (body.lockedUntil ? ` until ${body.lockedUntil}` : "");
+                return `HTTP ${status}`;
+            }
+        }
+
+        class CodeMazeApi {
+            constructor(baseUrl = "") { this.baseUrl = baseUrl.replace(/\/+$/, ""); }
+
+            async #request(method, path, body) {
+                const res = await fetch(this.baseUrl + path, {
+                    method,
+                    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+                    body: body !== undefined ? JSON.stringify(body) : undefined,
+                });
+                const text = await res.text();
+                let data = text;
+                try { data = text ? JSON.parse(text) : null; } catch { /* plain text body */ }
+                if (!res.ok) throw new ApiError(res.status, data);
+                return data;
+            }
+
+            // GET api/capabilities
+            capabilities() { return this.#request("GET", "/api/capabilities"); }
+
+            // GET api/maze?size=  and  GET api/maze/{difficulty}?size=
+            generateMaze(size, difficulty) {
+                const d = difficulty ? "/" + encodeURIComponent(difficulty) : "";
+                return this.#request("GET", `/api/maze${d}?size=${size}`);
+            }
+
+            // POST api/players/reserve | confirm | verify
+            reservePlayer(displayName) { return this.#request("POST", "/api/players/reserve", { displayName }); }
+            confirmPlayer(displayName, code) { return this.#request("POST", "/api/players/confirm", { displayName, code }); }
+            verifyPlayer(displayName, code) { return this.#request("POST", "/api/players/verify", { displayName, code }); }
+
+            // GET api/scores/leaderboard?top=
+            leaderboard(top = 10) { return this.#request("GET", `/api/scores/leaderboard?top=${top}`); }
+
+            // POST api/runs  -> { runId, webSocketPath, maze }
+            createRun(req) { return this.#request("POST", "/api/runs", req); }
+
+            // WS api/runs/{id}/ws   handlers: onEvent(evt), onClose(), onError(err)
+            openRun(webSocketPath, { onEvent, onClose, onError } = {}) {
+                const url = new URL(this.baseUrl + webSocketPath, location.href);
+                url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+                const ws = new WebSocket(url);
+                ws.onmessage = m => { try { onEvent?.(JSON.parse(m.data)); } catch (e) { onError?.(e); } };
+                ws.onclose = () => onClose?.();
+                ws.onerror = () => onError?.(new Error("WebSocket error"));
+                return {
+                    cancel: () => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: "cancel" })),
+                    close: () => ws.close(),
+                };
+            }
+        }
+
+        /* =====================================================================
+           MAZE NORMALISATION
+           The MazeSerializer output isn't shown, so this accepts the likely shapes.
+           If the maze looks wrong, adjust the constants below.
+           ===================================================================== */
+        const WALL_BITS = { n: 1, e: 2, s: 4, w: 8 };  // numeric [Flags] values of Walls
+        const BIT_MEANS_WALL = true;                   // false if a set bit means "open passage"
+        const NAMES = {
+            north: "n", n: "n", top: "n", up: "n",
+            east: "e", e: "e", right: "e",
+            south: "s", s: "s", bottom: "s", down: "s",
+            west: "w", w: "w", left: "w"
+        };
+
+        const pick = (o, ...keys) => { for (const k of keys) if (o?.[k] !== undefined) return o[k]; };
+
+        function toPos(p) {
+            if (Array.isArray(p)) return { x: p[0], y: p[1] };
+            const x = pick(p, "x", "X"), y = pick(p, "y", "Y");
+            return { x: x?.value ?? x, y: y?.value ?? y };
+        }
+
+        function cellToWalls(c) {
+            let set = { n: false, e: false, s: false, w: false };
+            if (typeof c === "number") {
+                for (const k in set) set[k] = (c & WALL_BITS[k]) !== 0;
+            } else if (typeof c === "string") {
+                const parts = c.toLowerCase().split(/[,\s|]+/).filter(Boolean);
+                for (const part of parts) {
+                    if (part === "all") set = { n: true, e: true, s: true, w: true };
+                    else if (NAMES[part]) set[NAMES[part]] = true;
+                }
+            } else if (Array.isArray(c)) {
+                return cellToWalls(c.reduce((acc, v) => typeof v === "number" ? acc | v : acc + "," + v, typeof c[0] === "number" ? 0 : ""));
+            } else if (c && typeof c === "object") {
+                for (const [k, v] of Object.entries(c)) if (NAMES[k.toLowerCase()] && v) set[NAMES[k.toLowerCase()]] = true;
+            }
+            if (!BIT_MEANS_WALL) for (const k in set) set[k] = !set[k];
+            return set;
+        }
+
+        function normalizeMaze(raw) {
+            const width = pick(raw, "width", "Width"), height = pick(raw, "height", "Height");
+            const cells = pick(raw, "cells", "Cells");
+            if (!width || !height || !cells) throw new Error("Unrecognised maze JSON: " + JSON.stringify(raw).slice(0, 200));
+            const flat = Array.isArray(cells[0]) ? cells.flat() : cells; // row-major, y * width + x
+            return {
+                width, height,
+                entrance: toPos(pick(raw, "entrance", "Entrance")),
+                exit: toPos(pick(raw, "exit", "Exit")),
+                walls: flat.map(cellToWalls),
+                raw,
+            };
+        }
+
+        /* =====================================================================
+           RENDERER  (canvas, animated @, green S, red E)
+           ===================================================================== */
+        class MazeView {
+            constructor(canvas) {
+                this.cv = canvas;
+                this.ctx = canvas.getContext("2d");
+                this.maze = null;
+                this.queue = [];
+                this.visited = new Set();
+                this.flash = 0;
+                this.stepMs = 150;
+                window.addEventListener("resize", () => this.layout());
+                requestAnimationFrame(t => this.#tick(t));
+            }
+
+            setMaze(maze) {
+                this.maze = maze;
+                this.reset();
+                this.layout();
+            }
+
+            reset() {
+                if (!this.maze) return;
+                this.player = { x: this.maze.entrance.x, y: this.maze.entrance.y };
+                this.queue = [];
+                this.current = null;
+                this.visited = new Set([this.#key(this.player.x, this.player.y)]);
+                this.blocked = null;
+                this.draw();
+            }
+
+            #key(x, y) { return y * 1e4 + x; }
+
+            /** Queue a move from the "moved" event. */
+            moveTo(from, to) { this.queue.push({ from, to }); }
+            blockedAt(pos) { this.blocked = { ...pos }; this.flash = performance.now(); }
+
+            layout() {
+                if (!this.maze) return;
+                const wrap = this.cv.parentElement;
+                const avail = Math.min(wrap.clientWidth - 24, wrap.clientHeight - 24, 900);
+                this.cell = Math.max(6, Math.floor(avail / Math.max(this.maze.width, this.maze.height)));
+                this.pad = 4;
+                const w = this.maze.width * this.cell + this.pad * 2;
+                const h = this.maze.height * this.cell + this.pad * 2;
+                const dpr = window.devicePixelRatio || 1;
+                this.cv.width = w * dpr; this.cv.height = h * dpr;
+                this.cv.style.width = w + "px"; this.cv.style.height = h + "px";
+                this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                this.draw();
+            }
+
+            #tick(t) {
+                if (this.maze) {
+                    if (!this.current && this.queue.length) {
+                        this.current = { ...this.queue.shift(), start: t };
+                    }
+                    if (this.current) {
+                        // speed up when the backlog grows so we never lag far behind the server
+                        const backlog = Math.max(1, this.queue.length / 4);
+                        const dur = Math.min(this.stepMs, 200) / backlog;
+                        const k = dur <= 0 ? 1 : Math.min(1, (t - this.current.start) / dur);
+                        const { from, to } = this.current;
+                        this.player = { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
+                        if (k >= 1) {
+                            this.visited.add(this.#key(to.x, to.y));
+                            this.current = null;
+                        }
+                        this.draw();
+                    } else if (this.blocked) {
+                        this.draw();
+                        if (t - this.flash > 400) this.blocked = null;
+                    }
+                }
+                requestAnimationFrame(x => this.#tick(x));
+            }
+
+            draw() {
+                const m = this.maze; if (!m) return;
+                const c = this.ctx, s = this.cell, p = this.pad;
+                const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+                c.clearRect(0, 0, this.cv.width, this.cv.height);
+
+                // visited trail
+                c.fillStyle = css("--trail");
+                for (const k of this.visited) c.fillRect(p + (k % 1e4) * s, p + Math.floor(k / 1e4) * s, s, s);
+
+                // blocked flash
+                if (this.blocked) {
+                    c.fillStyle = "rgba(214,50,47,.35)";
+                    c.fillRect(p + this.blocked.x * s, p + this.blocked.y * s, s, s);
+                }
+
+                // walls
+                c.strokeStyle = css("--ink");
+                c.lineWidth = Math.max(1.5, s / 10);
+                c.lineCap = "square";
+                c.beginPath();
+                for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
+                    const w = m.walls[y * m.width + x];
+                    const x0 = p + x * s, y0 = p + y * s, x1 = x0 + s, y1 = y0 + s;
+                    if (w.n) { c.moveTo(x0, y0); c.lineTo(x1, y0); }
+                    if (w.s) { c.moveTo(x0, y1); c.lineTo(x1, y1); }
+                    if (w.w) { c.moveTo(x0, y0); c.lineTo(x0, y1); }
+                    if (w.e) { c.moveTo(x1, y0); c.lineTo(x1, y1); }
+                }
+                c.stroke();
+
+                // letters
+                c.textAlign = "center"; c.textBaseline = "middle";
+                c.font = `600 ${Math.floor(s * 0.7)}px "Spline Sans Mono", ui-monospace, monospace`;
+                const at = (pos, ch, color) => { c.fillStyle = color; c.fillText(ch, p + (pos.x + .5) * s, p + (pos.y + .55) * s); };
+                at(m.entrance, "S", css("--start"));
+                at(m.exit, "E", css("--end"));
+                at(this.player, "@", css("--accent"));
+            }
+        }
+
+        /* =====================================================================
+           PAGE WIRING
+           ===================================================================== */
+        const $ = id => document.getElementById(id);
+        const view = new MazeView($("cv"));
+        let api = new CodeMazeApi("");
+        let sessionId = crypto.randomUUID();
+        let currentMazeRaw = null;
+        let live = null;
+
+        const store = {
+            get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+            set(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+        };
+
+        function status(msg, kind = "") { const el = $("status"); el.textContent = msg; el.className = kind; }
+        function refreshApi() { api = new CodeMazeApi($("baseUrl").value.trim()); store.set("cm.base", $("baseUrl").value.trim()); }
+        const guard = fn => async (...a) => { try { refreshApi(); await fn(...a); } catch (e) { status(e.message, "error"); } };
+
+        function showMaze(raw) {
+            currentMazeRaw = raw;
+            view.setMaze(normalizeMaze(raw));
+        }
+
+        function setPlayer(res, name) {
+            sessionId = res.sessionId ?? res.sessionKey ?? sessionId;
+            store.set("cm.session", sessionId);
+            store.set("cm.name", name);
+            $("playerInfo").textContent = `Playing as ${res.displayName ?? name}${res.publicId ? " " + res.publicId : ""}.`;
+        }
+
+        /* ---- capabilities ---- */
+        $("btnCaps").onclick = guard(async () => {
+            const caps = await api.capabilities();
+            $("language").innerHTML = caps.languages.map(l => `<option>${l.name}</option>`).join("");
+            $("difficulty").innerHTML = caps.difficulties.map(d => `<option ${d === caps.defaultDifficulty ? "selected" : ""}>${d}</option>`).join("");
+            $("size").min = caps.maze.minSize; $("size").max = caps.maze.maxSize;
+            $("delay").min = caps.run.minStepDelayMs; $("delay").max = caps.run.maxStepDelayMs; $("delay").value = caps.run.defaultStepDelayMs;
+            $("src").maxLength = caps.run.maxCodeLength;
+            status(`Capabilities loaded. Collisions: ${caps.interpreter.onCollision}, stop at exit: ${caps.interpreter.stopAtExit}.`, "ok");
+        });
+
+        /* ---- players ---- */
+        $("btnReserve").onclick = guard(async () => {
+            const name = $("playerName").value.trim();
+            try {
+                const res = await api.reservePlayer(name);
+                setPlayer(res, name);
+                $("code").textContent = res.code;
+                $("codeBox").hidden = false;
+                $("playerCode").value = res.code;
+                status("Name reserved. Write the code down, then press Confirm.", "ok");
+            } catch (e) {
+                if (e.status === 409) { $("codeBox").hidden = false; status("Name is taken. If it's yours, enter your code and press Verify.", "error"); }
+                else throw e;
+            }
+        });
+        $("btnVerify").onclick = () => { $("codeBox").hidden = false; $("playerCode").focus(); };
+        $("btnConfirm").onclick = guard(async () => {
+            await api.confirmPlayer($("playerName").value.trim(), $("playerCode").value.trim());
+            $("code").textContent = "";
+            status("Registration confirmed. Your scores will appear on the leaderboard.", "ok");
+        });
+        $("btnVerifyGo").onclick = guard(async () => {
+            const name = $("playerName").value.trim();
+            const res = await api.verifyPlayer(name, $("playerCode").value.trim());
+            setPlayer(res, name);
+            status("Verified. Session started.", "ok");
+        });
+
+        /* ---- logout: forget the session, keep the name so you can verify again ---- */
+        $("btnLogout").onclick = () => {
+            live?.cancel();
+            sessionId = crypto.randomUUID();
+            store.set("cm.session", sessionId);
+            $("code").textContent = "";
+            $("playerCode").value = "";
+            $("codeBox").hidden = true;
+            $("playerInfo").textContent = "Logged out. Playing as a guest session.";
+            status("Session forgotten. Enter your code and press Verify to start a new session.", "ok");
+        };
+
+        /* ---- maze preview ---- */
+        $("btnPreview").onclick = guard(async () => {
+            const raw = await api.generateMaze(+$("size").value, $("difficulty").value || undefined);
+            showMaze(raw);
+            status("Maze generated.", "ok");
+        });
+
+        /* ---- run ---- */
+        $("btnRun").onclick = guard(async () => {
+            live?.close();
+            const delay = +$("delay").value;
+            const req = {
+                code: $("src").value,
+                language: $("language").value || null,
+                sessionId,
+                stepDelayMs: delay,
+            };
+            if ($("reuse").checked && currentMazeRaw) req.maze = currentMazeRaw;
+            else { req.size = +$("size").value; req.difficulty = $("difficulty").value || null; }
+
+            status("Compiling…");
+            const res = await api.createRun(req);
+            showMaze(res.maze);
+            view.stepMs = delay;
+
+            $("btnRun").disabled = true; $("btnCancel").disabled = false;
+            status("Running…");
+            live = api.openRun(res.webSocketPath, {
+                onEvent: handleEvent,
+                onError: e => status(e.message, "error"),
+                onClose: () => { $("btnRun").disabled = false; $("btnCancel").disabled = true; live = null; },
+            });
+        });
+        $("btnCancel").onclick = () => live?.cancel();
+
+        function handleEvent(e) {
+            switch (e.type) {
+                case "started":
+                    view.reset();
+                    break;
+                case "moved":
+                    view.moveTo(toPos(e.from), toPos(e.to));
+                    status(`Step ${e.step}: ${e.direction}`);
+                    break;
+                case "moveBlocked":
+                    view.blockedAt(toPos(e.position));
+                    status(`Blocked (${e.reason}) going ${e.direction}`, "error");
+                    break;
+                case "exitReached":
+                    status(`Exit reached in ${e.steps} steps!`, "ok");
+                    break;
+                case "finished":
+                    status(`Finished: ${e.outcome}${e.message ? " – " + e.message : ""}\nSteps: ${e.steps}, instructions: ${e.instructions}`,
+                        e.outcome === "exitReached" ? "ok" : (e.outcome === "programEnded" || e.outcome === "cancelled" ? "" : "error"));
+                    loadBoard();
+                    break;
+            }
+        }
+
+        /* ---- leaderboard ---- */
+        async function loadBoard() {
+            try {
+                refreshApi();
+                const rows = await api.leaderboard(10);
+                $("board").innerHTML = "<tr><th>#</th><th>Player</th><th>Pts</th></tr>" +
+                    rows.map(r => `<tr><td>${r.rank}</td><td>${esc(r.displayName)} <span style="color:var(--muted)">${r.playerTag}</span></td><td>${r.totalPoints}</td></tr>`).join("");
+            } catch (e) { status(e.message, "error"); }
+        }
+        const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        $("btnBoard").onclick = loadBoard;
+
+        /* ---- init ---- */
+        $("baseUrl").value = store.get("cm.base") ?? "";
+        sessionId = store.get("cm.session") ?? sessionId;
+        $("playerName").value = store.get("cm.name") ?? "";
+        $("difficulty").innerHTML = "<option>easy</option><option selected>medium</option><option>hard</option>";
+        $("btnCaps").click();
+    </script>
+</body>
+
+</html>

@@ -3,7 +3,8 @@ using CodeMaze.MazeLang.Ast;
 using CodeMaze.MazeLang.Core;
 using CodeMaze.MazeLang.IL;
 
-namespace CodeMaze.MazeLang.Compiler;
+namespace CodeMaze.MazeLang.Compiler.AST;
+
 
 /// <summary>
 /// Translates an AST into IL. Along the way it checks everything the interpreter

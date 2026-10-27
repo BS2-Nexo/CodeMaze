@@ -3,9 +3,9 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../CodeMaze.MazeLang.Compiler.AST/src/CodeMaze.MazeLang.Compiler.AST.csproj" />
     <ProjectReference Include="../../CodeMaze.MazeLang.Ast/src/CodeMaze.MazeLang.Ast.csproj" />
     <ProjectReference Include="../../CodeMaze.MazeLang.Core/src/Codemaze.MazeLang.Core.csproj" />
     <ProjectReference Include="../../CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeLang.Compiler.AST/src/CodeMaze.MazeLang.Compiler.AST.csproj" />
   </ItemGroup>
 </Project>

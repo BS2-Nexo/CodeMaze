@@ -16,14 +16,17 @@ public sealed class Maze
     public int Height { get; }
     public CellPosition Entrance { get; }
     public CellPosition Exit { get; }
+    public IReadOnlyList<CellPosition>? ShortestPath { get; set; }
+    public Difficulty Difficulty { get; }
 
-    internal Maze(int height, int width, Walls[] cells, CellPosition entrance, CellPosition exit)
+    internal Maze(int height, int width, Walls[] cells, CellPosition entrance, CellPosition exit, Difficulty difficulty)
     {
         Height = height;
         Width = width;
         _cells = cells;
         Entrance = entrance;
         Exit = exit;
+        Difficulty = difficulty;
     }
 
     internal Maze(DraftMaze draft)
@@ -33,6 +36,7 @@ public sealed class Maze
         Entrance = draft.Entrance;
         Exit = draft.Exit;
         _cells = draft.GetCells();
+        Difficulty = draft.Difficulty;
     }
 
     /// <summary>Read-only view of all cells in row-major order.</summary>

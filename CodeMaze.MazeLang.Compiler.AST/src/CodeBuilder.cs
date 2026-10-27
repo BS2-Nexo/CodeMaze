@@ -1,6 +1,6 @@
 using CodeMaze.MazeLang.IL;
 
-namespace CodeMaze.MazeLang.Compiler;
+namespace CodeMaze.MazeLang.Compiler.AST;
 
 internal sealed class Label
 {

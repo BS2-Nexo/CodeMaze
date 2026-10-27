@@ -1,6 +1,7 @@
 using CodeMaze.MazeLang.Ast;
 
-namespace CodeMaze.MazeLang.Compiler;
+namespace CodeMaze.MazeLang.Compiler.AST;
+
 
 /// <param name="WithValue">The body contains a Return with a value.</param>
 /// <param name="Bare">The body contains a Return without a value.</param>
