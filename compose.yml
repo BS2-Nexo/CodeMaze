@@ -17,6 +17,21 @@ services:
       timeout: 5s
       retries: 5
 
+  server:
+    build:
+      context: .
+      dockerfile: CodeMaze.Server/src/Dockerfile
+      args:
+        DOTNET_VERSION: "10.0"
+    container_name: codemaze-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      ConnectionStrings__CodeMaze: "Host=postgres;Port=5432;Database=codemaze;Username=codemaze;Password=password"
+
 volumes:
   postgres_data:
-
