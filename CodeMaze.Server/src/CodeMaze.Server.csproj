@@ -18,7 +18,7 @@
     <ProjectReference Include="../../CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
     <ProjectReference Include="../../CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
     <ProjectReference Include="../../CodeMaze.MazeLang.Interpreter/src/CodeMaze.MazeLang.Interpreter.csproj" />
-    <ProjectReference Include="../../CodeMaze.MazeLang.Compiler/src/CodeMaze.Mazelang.Compiler.csproj" />
+    <ProjectReference Include="../../CodeMaze.MazeLang.Compiler/src/CodeMaze.MazeLang.Compiler.csproj" />
   </ItemGroup>
 
 </Project>

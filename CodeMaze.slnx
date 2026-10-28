@@ -1,34 +1,13 @@
 <Solution>
   <Project Path="CodeMaze.MazeGeneration/src/CodeMaze.MazeGeneration.csproj" />
-  <Project Path="CodeMaze.MazeGeneration/test/CodeMaze.MazeGeneration.Tests.csproj" />
-  <Project Path="CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
-  <Folder Name="/CodeMaze.MazeLang.Ast/" />
-  <Folder Name="/CodeMaze.MazeLang.Ast/src/" />
-  <Folder Name="/CodeMaze.MazeLang.Compiler.AST/" />
-  <Folder Name="/CodeMaze.MazeLang.Compiler.AST/src/">
-    <Project Path="CodeMaze.MazeLang.Compiler.AST/src/CodeMaze.MazeLang.Compiler.AST.csproj" />
-  </Folder>
-  <Folder Name="/CodeMaze.MazeLang.Compiler/" />
-  <Folder Name="/CodeMaze.MazeLang.Compiler/src/">
-    <Project Path="CodeMaze.MazeLang.Compiler/src/CodeMaze.Mazelang.Compiler.csproj" />
-  </Folder>
-  <Folder Name="/CodeMaze.MazeLang.Core/" />
-  <Folder Name="/CodeMaze.MazeLang.Core/src/" />
-  <Folder Name="/CodeMaze.MazeLang.IL/" />
-  <Folder Name="/CodeMaze.MazeLang.IL/src/" />
-  <Folder Name="/CodeMaze.MazeLang.Parser.Text/" />
-  <Folder Name="/CodeMaze.MazeLang.Parser.Text/demo/">
-    <Project Path="CodeMaze.MazeLang.Parser.Text/demo/CodeMaze.MazeLang.Parser.Text.Demo.csproj" />
-  </Folder>
   <Project Path="CodeMaze.MazeGeneration.Abstractions/src/CodeMaze.MazeGeneration.Abstractions.csproj" />
+  <Project Path="CodeMaze.MazeGeneration.Algorithms/src/CodeMaze.MazeGeneration.Algorithms.csproj" />
   <Project Path="CodeMaze.MazeLang.Ast/src/CodeMaze.MazeLang.Ast.csproj" />
+  <Project Path="CodeMaze.MazeLang.Compiler/src/CodeMaze.MazeLang.Compiler.csproj" />
+  <Project Path="CodeMaze.MazeLang.Compiler.AST/src/CodeMaze.MazeLang.Compiler.AST.csproj" />
   <Project Path="CodeMaze.MazeLang.Core/src/Codemaze.MazeLang.Core.csproj" />
-  <Project Path="CodeMaze.MazeLang.Demo/src/MazeLang.Demo.csproj" />
   <Project Path="CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
   <Project Path="CodeMaze.MazeLang.Interpreter/src/CodeMaze.MazeLang.Interpreter.csproj" />
-  <Project Path="CodeMaze.MazeLang.Interpreter/demo/CodeMaze.MazeLang.Interpreter.Demo.csproj" />
   <Project Path="CodeMaze.MazeLang.Parser.Text/src/CodeMaze.MazeLang.Parser.Text.csproj" />
-  <Project Path="CodeMaze.Runner/src/CodeMaze.Runner.csproj" />
   <Project Path="CodeMaze.Server/src/CodeMaze.Server.csproj" />
-  <Project Path="CodeMaze.Server/demo/CodeMaze.Server.Demo.csproj" />
 </Solution>
