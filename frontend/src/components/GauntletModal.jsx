@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { difficultyLabel } from "../api/gauntlet.js";
 
 const btnPrimary =
     "mx-auto w-fit bg-white px-2 font-bold uppercase text-black hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-40";
@@ -25,6 +26,30 @@ export default function GauntletModal({ phase, capabilities, result, onStart, on
     // nothing to show while running: the maze (and its zoom / follow buttons) stays fully usable
     if (phase === "running") return null;
 
+    // a failed gauntlet: no overlay, so the failed maze stays visible and can be inspected (zoom, pan, "Alles", "Folgen")
+    if (phase === "done" && result && !result.success) {
+        return (
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-4">
+                <section
+                    role="alertdialog"
+                    aria-labelledby="gauntlet-title"
+                    className="pointer-events-auto flex w-full max-w-sm flex-col gap-1 border-4 border-[#272a28] bg-[#111]/95 p-3 text-center text-sm"
+                >
+                    <h2 id="gauntlet-title" className="uppercase text-red-400">
+                        Härtetest gescheitert
+                    </h2>
+                    <p>
+                        {result.completed} / {result.total} Stufen
+                    </p>
+                    {result.message && <p className="text-xs text-white/70">{result.message}</p>}
+                    <button className={`${btnPrimary} mt-1`} onClick={onClose}>
+                        &gt; Weiter
+                    </button>
+                </section>
+            </div>
+        );
+    }
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-[2px]">
             <section
@@ -44,7 +69,7 @@ export default function GauntletModal({ phase, capabilities, result, onStart, on
                             {all.map((d) => (
                                 <label key={d} className="flex items-center gap-2 uppercase">
                                     <input type="checkbox" checked={selected.includes(d)} onChange={() => toggle(d)} />
-                                    {d}
+                                    {difficultyLabel(d)}
                                 </label>
                             ))}
                         </fieldset>

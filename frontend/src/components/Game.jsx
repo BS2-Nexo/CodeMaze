@@ -8,7 +8,7 @@ import GameInput from "./GameInput.jsx";
 import LevelCompleteModal from "./LevelCompleteModal.jsx";
 import PlayerDialog from "./PlayerDialog.jsx";
 import GauntletModal from "./GauntletModal.jsx";
-import { buildGauntlet } from "../api/gauntlet.js";
+import { buildGauntlet, difficultyLabel, outcomeLabel } from "../api/gauntlet.js";
 
 const api = new CodeMazeApi(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080");
 
@@ -333,8 +333,8 @@ export default function Game() {
                 }
                 if (!model.exitReached) {
                     message =
-                        `Fehlgeschlagen bei ${stage.difficulty} ${stage.size}×${stage.size}` +
-                        (model.outcome ? ` (${model.outcome})` : "");
+                        `Gescheitert bei ${difficultyLabel(stage.difficulty)} ${stage.size}×${stage.size}` +
+                        (model.outcome ? `: ${outcomeLabel(model.outcome)}` : "");
                     break;
                 }
                 completed++;

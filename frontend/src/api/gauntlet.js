@@ -33,3 +33,18 @@ export function buildGauntlet(allDifficulties, selected, minSize, maxSize) {
     const sizes = gauntletSizes(minSize, maxSize);
     return difficulties.flatMap((difficulty) => sizes.map((size) => ({ difficulty, size })));
 }
+
+const DIFFICULTY_DE = { easy: "leicht", medium: "mittel", hard: "schwer" };
+const OUTCOME_DE = {
+    crashed: "gegen eine Wand gelaufen",
+    programEnded: "Programm zu Ende, Ausgang nicht erreicht",
+    limitExceeded: "Limit überschritten (Endlosschleife oder zu tiefe Rekursion)",
+    cancelled: "abgebrochen",
+    fault: "interner Fehler",
+};
+
+/** German name of a server difficulty (unknown ones are shown as they are). */
+export const difficultyLabel = (d) => DIFFICULTY_DE[d] ?? d;
+
+/** German explanation of a run outcome from the server. */
+export const outcomeLabel = (o) => OUTCOME_DE[o] ?? o;
