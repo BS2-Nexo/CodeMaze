@@ -483,9 +483,11 @@ const toolButton =
  *
  * @param model         a MazeModel (run.model); null while no maze is loaded
  * @param transitionMs  how long the player sprite takes to slide to the next cell
+ * @param fast          true while the "Schnell" mode (no pacing of the moves) is on
+ * @param onToggleFast  called when the "Schnell" button is pressed; the button is hidden without it
  * @param className     sizing classes for the outer element
  */
-export function Maze({ model, transitionMs = 100, className = "" }) {
+export function Maze({ model, transitionMs = 100, fast = false, onToggleFast, className = "" }) {
     const boxRef = useRef(null);
     const canvasRef = useRef(null);
     const viewRef = useRef(null);
@@ -554,6 +556,11 @@ export function Maze({ model, transitionMs = 100, className = "" }) {
                     <button type="button" className={toolButton} aria-pressed={mode.follow && !mode.fit} onClick={() => view()?.followPlayer()}>
                         Folgen
                     </button>
+                    {onToggleFast && (
+                        <button type="button" className={toolButton} aria-pressed={fast} onClick={onToggleFast}>
+                            Schnell
+                        </button>
+                    )}
                 </div>
             )}
         </section>

@@ -15,8 +15,54 @@ const api = new CodeMazeApi(import.meta.env.VITE_API_BASE_URL ?? "http://localho
 const MAZE_SIZE = 10;
 const DIFFICULTY = "easy";
 const LANGUAGE = "de"; // the block editor writes German keywords
-const STEP_DELAY_MS = 120; // client-side pacing of the moves (the server is asked not to wait)
-const GAUNTLET_DELAY_MS = 0; // no artificial pacing during the gauntlet: events are applied as they arrive
+const STEP_DELAY_MS = 120; // client-side pacing of the moves in a normal run (the server is asked not to wait)
+const GAUNTLET_DELAY_MS = 30; // pacing of the moves during the gauntlet
+// The "Schnell" button on the maze switches the pacing off: events are applied as they arrive.
+
+/**
+ * Hands the server's events to the MazeRun one by one, `delay()` ms after each move
+ * (0 = all at once). The delay is read again for every event, so the speed can change during a run.
+ */
+function createPump(run, delay) {
+    const queue = [];
+    let timer = 0;
+    let rush = false; // pass everything straight through (the run is being cancelled)
+
+    function release() {
+        timer = 0;
+        while (queue.length) {
+            const event = queue.shift();
+            run.enqueue(event);
+            const ms = rush ? 0 : delay();
+            if (ms > 0 && event.type === "moved") {
+                timer = setTimeout(release, ms);
+                return;
+            }
+        }
+    }
+
+    return {
+        push(event) {
+            queue.push(event);
+            if (!timer) release();
+        },
+        /** The speed changed: apply it now instead of after the pending wait. */
+        kick() {
+            clearTimeout(timer);
+            release();
+        },
+        /** Everything that is still waiting is delivered at once, and so is everything that follows. */
+        rushAll() {
+            rush = true;
+            this.kick();
+        },
+        stop() {
+            clearTimeout(timer);
+            timer = 0;
+            queue.length = 0;
+        },
+    };
+}
 
 export default function Game() {
     const [rawMaze, setRawMaze] = useState(null); // maze JSON as sent by the server
@@ -30,6 +76,7 @@ export default function Game() {
     const [player, setPlayer] = useState(null); // { sessionId, playerId, publicId, displayName }
     const [loginOpen, setLoginOpen] = useState(false);
     const [view, setView] = useState("maze"); // "maze" | "code"
+    const [fast, setFast] = useState(false); // "Schnell": no pacing of the moves
 
     // gauntlet
     const [capabilities, setCapabilities] = useState(null); // GET /api/capabilities
@@ -42,6 +89,15 @@ export default function Game() {
     const programErrorsRef = useRef([]); // block-editor validation errors
     const gauntletAbortRef = useRef(false);
     const rerenderQueued = useRef(false);
+    const fastRef = useRef(false);
+    const paceRef = useRef(STEP_DELAY_MS); // pacing of the current run when not in fast mode
+    const pumpRef = useRef(null);
+
+    function toggleFast() {
+        fastRef.current = !fastRef.current;
+        setFast(fastRef.current);
+        pumpRef.current?.kick();
+    }
 
     /** At most one React render per frame, however many events arrive (thousands per second on big mazes). */
     function scheduleRerender() {
@@ -54,12 +110,15 @@ export default function Game() {
     }
 
     /** Replaces the current run with a fresh one on `maze`; closes the old connection. */
-    function installRun(maze, delayMs = STEP_DELAY_MS) {
+    function installRun(maze) {
         connRef.current?.close();
         connRef.current = null;
+        pumpRef.current?.stop();
+        pumpRef.current = null;
         runRef.current?.dispose();
 
-        const next = new MazeRun(maze, { delayMs });
+        // pacing is done by the pump (so it can change during a run), the MazeRun applies events at once
+        const next = new MazeRun(maze, { delayMs: 0 });
         next.subscribe((_event, model) => {
             scheduleRerender();
             if (model.status === "finished") setActive(false);
@@ -86,6 +145,7 @@ export default function Game() {
             cancelled = true;
             gauntletAbortRef.current = true;
             connRef.current?.close();
+            pumpRef.current?.stop();
             runRef.current?.dispose();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,7 +168,7 @@ export default function Game() {
      * Resolves after POST /api/runs succeeded (throws on compile errors etc.) with
      * { next, done }; `done` resolves with the model once the exit is reached or the run is finished.
      */
-    async function launch(code, maze, delayMs = STEP_DELAY_MS) {
+    async function launch(code, maze, paceMs = STEP_DELAY_MS) {
         const res = await api.createRun({
             code,
             language: LANGUAGE,
@@ -117,7 +177,10 @@ export default function Game() {
             sessionId: player.sessionId,
         });
 
-        const next = installRun(res.maze, delayMs);
+        const next = installRun(res.maze);
+        paceRef.current = paceMs;
+        const pump = createPump(next, () => (fastRef.current ? 0 : paceRef.current));
+        pumpRef.current = pump;
         let gotFinished = false;
 
         const done = new Promise((resolve) => {
@@ -129,13 +192,13 @@ export default function Game() {
         connRef.current = api.openRun(res.webSocketPath, {
             onEvent: (event) => {
                 if (event.type === "finished") gotFinished = true;
-                next.enqueue(event);
+                pump.push(event);
             },
             onError: (e) => setError(e.message),
             onClose: () => {
                 // the connection dropped without a result: end the run so the UI does not hang
                 if (!gotFinished) {
-                    next.enqueue({
+                    pump.push({
                         type: "finished",
                         outcome: "fault",
                         message: "Verbindung getrennt",
@@ -181,6 +244,7 @@ export default function Game() {
 
     /** Stops the running program: tells the server to cancel, then returns to the start of the maze. */
     function cancelRun() {
+        pumpRef.current?.rushAll();
         connRef.current?.cancel();
         resetMaze();
     }
@@ -297,6 +361,7 @@ export default function Game() {
 
     function cancelGauntlet() {
         gauntletAbortRef.current = true;
+        pumpRef.current?.rushAll();
         connRef.current?.cancel();
     }
 
@@ -337,7 +402,9 @@ export default function Game() {
                     <div className="relative mx-auto aspect-square w-full max-w-[calc(100vh-7rem)]">
                         <Maze
                             model={model}
-                            transitionMs={Math.min(gauntlet ? GAUNTLET_DELAY_MS : STEP_DELAY_MS, 150)}
+                            transitionMs={fast ? 0 : Math.min(gauntlet ? GAUNTLET_DELAY_MS : STEP_DELAY_MS, 150)}
+                            fast={fast}
+                            onToggleFast={toggleFast}
                             className={`absolute inset-0 h-full w-full ${view === "maze" ? "" : "invisible"}`}
                         />
 
