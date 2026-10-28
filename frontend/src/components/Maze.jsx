@@ -13,10 +13,22 @@ import { useEffect, useRef, useState } from "react";
 // The maze is drawn on a canvas, so even 100x100 cells (201x201 tiles) stay fast. Only the part
 // that is visible is drawn. Small mazes are shown completely; big ones are shown zoomed in with
 // the camera following the player. Mouse wheel / buttons zoom, dragging pans.
+//
+// Calm playback: the model may receive events much faster than a person can follow. The view
+// therefore does not draw every event. It shows a "committed" snapshot (player, steps, breadcrumbs)
+// that is refreshed in batches, and the camera glides towards the player instead of jumping.
 
 const MAX_TILE = 96; // biggest tile size, in device pixels
 const COMFORT_TILE = 20; // tile size (css px) used for mazes that don't fit the screen
 const FIT_ENOUGH = 14; // if the whole maze fits with tiles at least this big (css px), show all of it
+
+// --- calm playback -------------------------------------------------------------------------
+const BATCH_EVENTS = 8; // when events pile up, this many are collected and drawn in one go (the player teleports)
+const MIN_COMMIT_MS = 180; // ...but a new batch is never shown more often than this (about 5 per second)
+const FLUSH_MS = 60; // if no new event arrived for this long (slow runs), show what we have right away
+const CAM_TAU_MS = 100; // camera smoothing: roughly how long it takes to cover 2/3 of the way to the player
+const DEAD_ZONE = 0.25; // the player may roam this far from the centre (fraction of the view size, per side)
+//                         before the camera starts to move; it then glides to re-centre on the player
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -89,8 +101,19 @@ class MazeView {
         this.fitTd = 1; // tile size (device px) at which the whole maze fits
         this.zoomTd = null; // tile size when zoomed in; null = whole maze
         this.follow = true;
+        this.pref = null; // the user's last choice: "all" | "follow" | null. Kept when a new maze is loaded.
         this.camX = 0; // top-left of the view, in tiles
         this.camY = 0;
+        this.snapCam = true; // jump (instead of glide) to the target on the next frame
+        this.targetX = null; // where the camera is gliding to (tiles); null = pick a new one
+        this.targetY = null;
+        this.lastDraw = 0;
+
+        // what is currently shown: a snapshot of the model, refreshed in batches
+        this.shown = null;
+        this.seenVersion = -1;
+        this.lastEventAt = 0;
+        this.poll = 0;
 
         this.anim = { fromX: 0, fromY: 0, toX: 0, toY: 0, start: -1e9, dur: 0 };
         this.raf = 0;
@@ -140,6 +163,7 @@ class MazeView {
 
     destroy() {
         cancelAnimationFrame(this.raf);
+        clearTimeout(this.poll);
         const c = this.canvas;
         c.removeEventListener("pointerdown", this.onPointerDown);
         c.removeEventListener("pointermove", this.onPointerMove);
@@ -161,18 +185,28 @@ class MazeView {
         if (!this.raf) this.raf = requestAnimationFrame(() => this.draw());
     }
 
+    /** Check again shortly: events are waiting for their batch. */
+    schedulePoll() {
+        if (this.poll) return;
+        this.poll = setTimeout(() => {
+            this.poll = 0;
+            this.request();
+        }, 30);
+    }
+
     /* ---- setup ---- */
 
     setModel(model) {
         this.model = model;
         this.needsInit = true;
+        this.shown = null; // the first frame of the new maze takes a fresh snapshot
+        this.seenVersion = -1;
+        this.snapCam = true;
+        this.targetX = this.targetY = null;
         if (model) {
             this.cols = 2 * model.width + 1;
             this.rows = 2 * model.height + 1;
             this.walls = buildWalls(model);
-            const x = 2 * model.position.x + 1;
-            const y = 2 * model.position.y + 1;
-            this.anim = { fromX: x, fromY: y, toX: x, toY: y, start: -1e9, dur: 0 };
         } else {
             this.walls = null;
         }
@@ -189,6 +223,8 @@ class MazeView {
         this.canvas.height = this.H;
         this.recomputeFit();
         if (this.zoomTd !== null && this.zoomTd <= this.fitTd) this.zoomTd = null;
+        this.snapCam = true;
+        this.targetX = this.targetY = null;
         this.maybeInit();
         this.request();
     }
@@ -198,13 +234,24 @@ class MazeView {
         this.fitTd = Math.max(1, Math.floor(Math.min(this.W, this.H) / tiles));
     }
 
-    /** First view of a new maze: all of it if it fits comfortably, otherwise zoomed in on the player. */
+    /**
+     * First view of a new maze. A choice the user made with the buttons ("Alles" / "Folgen") is kept;
+     * otherwise: all of it if it fits comfortably, else zoomed in on the player.
+     */
     maybeInit() {
         if (!this.needsInit || !this.model || !this.W) return;
         this.needsInit = false;
         const comfort = Math.round(COMFORT_TILE * this.dpr);
-        this.zoomTd = this.fitTd >= Math.round(FIT_ENOUGH * this.dpr) ? null : Math.max(comfort, this.fitTd + 1);
-        this.follow = true;
+        if (this.pref === "all") {
+            this.zoomTd = null;
+            this.follow = false;
+        } else if (this.pref === "follow") {
+            this.zoomTd = comfort > this.fitTd ? comfort : null;
+            this.follow = true;
+        } else {
+            this.zoomTd = this.fitTd >= Math.round(FIT_ENOUGH * this.dpr) ? null : Math.max(comfort, this.fitTd + 1);
+            this.follow = true;
+        }
         this.emit();
     }
 
@@ -224,11 +271,13 @@ class MazeView {
             this.camY = wy - ay / next;
         }
         this.zoomTd = next <= this.fitTd ? null : next;
+        this.targetX = this.targetY = null;
         this.emit();
         this.request();
     }
 
     showAll() {
+        this.pref = "all";
         this.zoomTd = null;
         this.follow = false;
         this.emit();
@@ -236,13 +285,85 @@ class MazeView {
     }
 
     followPlayer() {
+        this.pref = "follow";
         this.follow = true;
+        this.targetX = this.targetY = null;
         if (this.zoomTd === null) {
             const comfort = Math.round(COMFORT_TILE * this.dpr);
             if (comfort > this.fitTd) this.zoomTd = comfort;
         }
         this.emit();
         this.request();
+    }
+
+    /* ---- batching ---- */
+
+    /** Takes a snapshot of the model's current state and makes it the shown one. */
+    commit(now) {
+        const m = this.model;
+        const prev = this.shown;
+        const x = 2 * m.position.x + 1;
+        const y = 2 * m.position.y + 1;
+
+        const visited = new Uint8Array(m.width * m.height);
+        for (let cy = 0; cy < m.height; cy++) {
+            for (let cx = 0; cx < m.width; cx++) {
+                if (m.isVisited(cx, cy)) visited[cy * m.width + cx] = 1;
+            }
+        }
+
+        if (!prev) {
+            this.anim = { fromX: x, fromY: y, toX: x, toY: y, start: -1e9, dur: 0 };
+        } else {
+            const events = m.version - prev.version;
+            const dist = Math.abs(x - prev.x) + Math.abs(y - prev.y);
+            if (events <= 1 && dist <= 2) {
+                // a single, ordinary step: slide
+                const cur = this.playerAt(now);
+                this.anim = { fromX: cur.x, fromY: cur.y, toX: x, toY: y, start: now, dur: this.transitionMs };
+            } else {
+                // a whole batch: the player simply appears at the new place
+                this.anim = { fromX: x, fromY: y, toX: x, toY: y, start: -1e9, dur: 0 };
+            }
+        }
+
+        this.shown = {
+            version: m.version,
+            time: now,
+            x,
+            y,
+            steps: m.steps,
+            visited,
+            exitReached: !!m.exitReached,
+            status: m.status,
+        };
+    }
+
+    /** Decides whether the model has moved on enough to show a new snapshot. */
+    sync(now) {
+        const m = this.model;
+        if (!m) return;
+
+        if (m.version !== this.seenVersion) {
+            this.seenVersion = m.version;
+            this.lastEventAt = now;
+        }
+
+        const s = this.shown;
+        if (!s) {
+            this.commit(now);
+            return;
+        }
+
+        const pending = m.version - s.version;
+        if (pending <= 0) return;
+
+        // the end of the run (exit / finished) is always shown at once
+        const ending = (m.exitReached && !s.exitReached) || (m.status === "finished" && s.status !== "finished");
+        const batchFull = pending >= BATCH_EVENTS && now - s.time >= MIN_COMMIT_MS;
+        const quiet = pending < BATCH_EVENTS && now - this.lastEventAt >= FLUSH_MS; // slow run or a pause
+
+        if (ending || batchFull || quiet) this.commit(now);
     }
 
     /* ---- drawing ---- */
@@ -274,26 +395,43 @@ class MazeView {
         if (!m) return;
 
         const now = performance.now();
-        const td = this.td;
+        const dt = this.lastDraw ? Math.min(50, now - this.lastDraw) : 16;
+        this.lastDraw = now;
 
-        // player: slide from the old tile to the new one
-        const tx = 2 * m.position.x + 1;
-        const ty = 2 * m.position.y + 1;
-        if (this.anim.toX !== tx || this.anim.toY !== ty) {
-            const cur = this.playerAt(now);
-            this.anim = { fromX: cur.x, fromY: cur.y, toX: tx, toY: ty, start: now, dur: this.transitionMs };
-        }
+        this.sync(now);
+        const s = this.shown;
+        if (!s) return;
+
+        const td = this.td;
         const p = this.playerAt(now);
         const moving = this.anim.dur > 0 && now - this.anim.start < this.anim.dur;
 
-        // camera: follow the player, and keep the view inside the maze (or centred if the maze is smaller)
+        // camera: the player may be off-centre. Only when he leaves the dead zone around the centre
+        // does the camera pick a new target (centred on him) and glide there, never jumping.
         const viewW = W / td;
         const viewH = H / td;
-        if (this.follow) {
-            this.camX = p.x + 0.5 - viewW / 2;
-            this.camY = p.y + 0.5 - viewH / 2;
-        }
         const limit = (c, size, view) => (size <= view ? (size - view) / 2 : clamp(c, 0, size - view));
+        let camMoving = false;
+        if (this.follow) {
+            const px = p.x + 0.5;
+            const py = p.y + 0.5;
+            const outX = Math.abs(px - (this.camX + viewW / 2)) > viewW * DEAD_ZONE;
+            const outY = Math.abs(py - (this.camY + viewH / 2)) > viewH * DEAD_ZONE;
+            if (this.targetX === null || outX) this.targetX = px - viewW / 2;
+            if (this.targetY === null || outY) this.targetY = py - viewH / 2;
+            const targetX = limit(this.targetX, this.cols, viewW);
+            const targetY = limit(this.targetY, this.rows, viewH);
+            if (this.snapCam) {
+                this.camX = targetX;
+                this.camY = targetY;
+                this.snapCam = false;
+            } else {
+                const k = 1 - Math.exp(-dt / CAM_TAU_MS);
+                this.camX += (targetX - this.camX) * k;
+                this.camY += (targetY - this.camY) * k;
+                camMoving = Math.abs(targetX - this.camX) * td > 0.5 || Math.abs(targetY - this.camY) * td > 0.5;
+            }
+        }
         this.camX = limit(this.camX, this.cols, viewW);
         this.camY = limit(this.camY, this.rows, viewH);
 
@@ -311,26 +449,29 @@ class MazeView {
             }
         }
 
-        // breadcrumbs on visited cells
+        // breadcrumbs on visited cells (as of the shown snapshot)
         ctx.fillStyle = "rgba(53, 178, 58, 0.45)";
         const q = Math.max(1, Math.round(td / 4));
-        const s = Math.max(1, td - 2 * q);
+        const sz = Math.max(1, td - 2 * q);
         const cx0 = Math.max(0, Math.floor((x0 - 1) / 2));
         const cx1 = Math.min(m.width - 1, Math.floor(x1 / 2));
         const cy0 = Math.max(0, Math.floor((y0 - 1) / 2));
         const cy1 = Math.min(m.height - 1, Math.floor(y1 / 2));
         for (let cy = cy0; cy <= cy1; cy++) {
             for (let cx = cx0; cx <= cx1; cx++) {
-                if (m.isVisited(cx, cy)) ctx.fillRect((2 * cx + 1) * td + ox + q, (2 * cy + 1) * td + oy + q, s, s);
+                if (s.visited[cy * m.width + cx]) {
+                    ctx.fillRect((2 * cx + 1) * td + ox + q, (2 * cy + 1) * td + oy + q, sz, sz);
+                }
             }
         }
 
         // exit and player
         this.sprite(this.img.exit, "#ffb900", (2 * m.exit.x + 1) * td + ox, (2 * m.exit.y + 1) * td + oy, td);
-        const body = m.steps % 2 === 1 ? this.img.walk : this.img.stand;
+        const body = s.steps % 2 === 1 ? this.img.walk : this.img.stand;
         this.sprite(body, "#35B23A", Math.round(p.x * td) + ox, Math.round(p.y * td) + oy, td);
 
-        if (moving) this.request();
+        if (moving || camMoving) this.request();
+        if (m.version !== s.version) this.schedulePoll(); // events are waiting for their batch
     }
 }
 

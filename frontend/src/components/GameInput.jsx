@@ -341,7 +341,7 @@ function NumberDialog({ initial, onSave, onClose }) {
 function ModeSwitch({ mode, onChange }) {
   const isText = mode === "text";
   return (
-    <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold">
+    <div className="mb-3 flex shrink-0 items-center gap-2 text-[10px] font-semibold">
       <span className={isText ? "text-white/40" : "text-[#ffca20]"}>Blöcke</span>
       <button
         type="button"
@@ -423,16 +423,25 @@ function Highlighted({ text, ranges }) {
 function TextEditor({ value, onChange, errors }) {
   const areaRef = useRef(null);
   const innerRef = useRef(null);
+  const gutterRef = useRef(null);
 
   const ranges = errors
     .map((e) => errorRange(value, e))
     .filter(Boolean)
     .sort((a, b) => a.start - b.start);
 
+  const lineCount = value.split("\n").length;
+  const errorLines = new Set(ranges.map((r) => r.lineIdx));
+  const digits = String(lineCount).length;
+
   function syncScroll() {
     const area = areaRef.current;
-    if (area && innerRef.current) {
+    if (!area) return;
+    if (innerRef.current) {
       innerRef.current.style.transform = `translate(${-area.scrollLeft}px, ${-area.scrollTop}px)`;
+    }
+    if (gutterRef.current) {
+      gutterRef.current.style.transform = `translateY(${-area.scrollTop}px)`;
     }
   }
 
@@ -450,31 +459,48 @@ function TextEditor({ value, onChange, errors }) {
   }, [errors]);
 
   return (
-    <div>
-      <div className="relative h-56 border-4 border-[#d8dad7] bg-[#050505]">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          <div ref={innerRef} className={`${EDITOR_TEXT} min-w-max text-transparent`}>
-            <Highlighted text={value} ranges={ranges} />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 border-4 border-[#d8dad7] bg-[#050505]">
+        {/* line numbers: same font and line height as the text, moved along with its scroll position */}
+        <div
+          className="shrink-0 select-none overflow-hidden border-r border-white/20 bg-black/40 font-mono text-xs"
+          style={{ width: `${digits + 2}ch` }}
+          aria-hidden="true"
+        >
+          <div ref={gutterRef} className="py-2 pr-2 text-right leading-5 whitespace-pre">
+            {Array.from({ length: lineCount }, (_, i) => (
+              <div key={i} className={errorLines.has(i) ? "text-red-400" : "text-white/40"}>
+                {i + 1}
+              </div>
+            ))}
           </div>
         </div>
-        <textarea
-          ref={areaRef}
-          wrap="off"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoComplete="off"
-          autoCorrect="off"
-          value={value}
-          placeholder="Schreibe deinen Code hier …"
-          aria-label="Code-Eingabefeld (Text)"
-          onChange={(event) => onChange(event.target.value)}
-          onScroll={syncScroll}
-          className={`${EDITOR_TEXT} absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent text-[#ffca20] caret-white outline-none`}
-        />
+
+        <div className="relative min-w-0 flex-1">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <div ref={innerRef} className={`${EDITOR_TEXT} min-w-max text-transparent`}>
+              <Highlighted text={value} ranges={ranges} />
+            </div>
+          </div>
+          <textarea
+            ref={areaRef}
+            wrap="off"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoComplete="off"
+            autoCorrect="off"
+            value={value}
+            placeholder="Schreibe deinen Code hier …"
+            aria-label="Code-Eingabefeld (Text)"
+            onChange={(event) => onChange(event.target.value)}
+            onScroll={syncScroll}
+            className={`${EDITOR_TEXT} absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent text-[#ffca20] caret-white outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
+          />
+        </div>
       </div>
 
       {errors.length > 0 && (
-        <ul className="mt-1 text-[10px] text-red-400" aria-live="polite">
+        <ul className="mt-1 shrink-0 text-[10px] text-red-400" aria-live="polite">
           {errors.map((e, i) => (
             <li key={i}>
               {e.line ? `Zeile ${e.line}${e.column ? `, Spalte ${e.column}` : ""}: ` : ""}
@@ -653,7 +679,7 @@ const GameInput = forwardRef(function GameInput({ status, onProgramChange }, ref
   }
 
   return (
-    <section className="col-span-full" aria-label="Code-Eingabe">
+    <section className="col-span-full flex min-h-full flex-col" aria-label="Code-Eingabe">
       <ModeSwitch mode={mode} onChange={changeMode} />
 
       {mode === "text" ? (

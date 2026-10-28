@@ -1,20 +1,19 @@
 import { useState } from "react";
 import Leaderboard from "./Leaderboard.jsx";
 
-// All values are in cqw = percent of the menu width. Tune these three while looking at the page.
-const NAME_TOP = 9; // distance from the top of the image to the name text (inside the banner)
-const TABS_TOP = 24; // distance from the top to the tab row (below the banner)
-const CONTENT_TOP = 31; // distance from the top to the stats / buttons / leaderboard
-const SIDE = 16; // left and right margin of the content, so it stays inside the frame
-const BOTTOM = 14; // bottom margin of the content
+// All values are in cqw = percent of the menu width.
+const PAD_TOP = 8; // space between the top of the frame and the title
+const SIDE = 16; // left and right margin, so content stays inside the frame
+const BOTTOM = 14; // bottom margin
 
 export default function GameMenue({
   api,
-  score,
   active,
   busy,
   canStart,
   player,
+  view,
+  onViewChange,
   onLogin,
   onLogout,
   onStart,
@@ -27,39 +26,43 @@ export default function GameMenue({
   const tabClass = (name) =>
     `flex-1 border-b-2 text-center font-black uppercase tracking-[0.15em] ${tab === name ? "border-[#ffb900] text-[#ffb900]" : "border-transparent hover:text-[#ffb900]"
     }`;
+  const viewClass = (name) =>
+    `${itemClass} ${view === name ? "text-[#ffb900]" : ""}`;
 
   const loggedIn = !!player;
 
   return (
+    // container only: no cqw values on this element itself
     <aside
-      className="relative mx-auto w-full max-w-full justify-self-center bg-black"
+      className="relative mx-auto flex h-full w-full max-w-full flex-col bg-black"
       style={{ containerType: "inline-size" }}
     >
-      {/* the frame is a normal image now: it defines the size and keeps its proportions */}
       <img
         src="/assets/Frame.png"
         alt=""
         draggable={false}
-        className="pointer-events-none block h-auto w-full select-none"
+        className="pointer-events-none absolute inset-0 h-full w-full select-none object-fill"
       />
 
-      {/* everything else is laid over the image */}
-      <div className="absolute inset-0 flex flex-col" style={{ fontSize: "2.8cqw" }}>
-        {/* name: inside the banner */}
-        <div
-          className="text-center"
-          style={{ position: "absolute", top: `${NAME_TOP}cqw`, left: `${SIDE}cqw`, right: `${SIDE}cqw` }}
-        >
-          <p className="break-all font-black normal-case text-[#ffb900]">
-            {loggedIn ? `${player.displayName} ${player.publicId}` : "Nicht angemeldet"}
-          </p>
-        </div>
+      <div
+        className="relative flex min-h-[133.33cqw] flex-1 flex-col overflow-hidden lg:min-h-0"
+        style={{
+          fontSize: "2.8cqw",
+          padding: `${PAD_TOP}cqw ${SIDE}cqw ${BOTTOM}cqw`,
+        }}
+      >
+        <img
+          src="/assets/Title.png"
+          alt="Title"
+          draggable={false}
+          className="pointer-events-none mx-auto block h-auto w-full shrink-0 select-none"
+        />
 
-        {/* tabs */}
-        <div
-          className="flex items-stretch"
-          style={{ position: "absolute", top: `${TABS_TOP}cqw`, left: `${SIDE}cqw`, right: `${SIDE}cqw`, fontSize: "0.85em" }}
-        >
+        <p className="mt-[2cqw] shrink-0 break-all text-center font-black normal-case text-[#ffb900]">
+          {loggedIn ? `${player.displayName} ${player.publicId}` : "Nicht angemeldet"}
+        </p>
+
+        <div className="mt-[2cqw] flex shrink-0 items-stretch" style={{ fontSize: "0.85em" }}>
           <button type="button" className={tabClass("game")} onClick={() => setTab("game")}>
             Spiel
           </button>
@@ -68,59 +71,42 @@ export default function GameMenue({
           </button>
         </div>
 
-        {/* content */}
-        <div
-          className="flex min-h-0 flex-col"
-          style={{
-            position: "absolute",
-            top: `${CONTENT_TOP}cqw`,
-            left: `${SIDE}cqw`,
-            right: `${SIDE}cqw`,
-            bottom: `${BOTTOM}cqw`,
-          }}
-        >
+        <div className="mt-[3cqw] flex min-h-0 flex-1 flex-col overflow-y-auto">
           {tab === "game" ? (
-            <>
-              <div className="space-y-[1.5cqw] text-center">
-                <div>
-                  <h2 className="uppercase tracking-[0.2em]">Level:</h2>
-                  <p className="mx-auto w-[40%] bg-[#d6d6d6] py-0.5 text-[0.9em] font-black tracking-[0.2em] text-black">
-                    001
-                  </p>
-                </div>
-                <div>
-                  <h2 className="uppercase tracking-[0.2em]">Score:</h2>
-                  <p className="mx-auto w-[40%] bg-[#d6d6d6] py-0.5 text-[0.9em] font-black tracking-[0.2em] text-black">
-                    {score}
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-1 font-black uppercase tracking-[0.15em]">
+              {/* view toggle */}
+              <button type="button" onClick={() => onViewChange("maze")} className={viewClass("maze")}>
+                &gt; Labyrinth
+              </button>
+              <button type="button" onClick={() => onViewChange("code")} className={viewClass("code")}>
+                &gt; Code
+              </button>
 
-              <div className="mt-[5cqw] space-y-1 font-black uppercase tracking-[0.15em]">
-                <button type="button" onClick={onLogin} disabled={loggedIn} className={itemClass}>
-                  &gt; Anmelden
-                </button>
-                <button type="button" onClick={onLogout} disabled={!loggedIn} className={itemClass}>
-                  &gt; Abmelden
-                </button>
+              <div className="pt-[2cqw]" />
 
-                <div className="pt-[3cqw]" />
+              <button type="button" onClick={onLogin} disabled={loggedIn} className={itemClass}>
+                &gt; Anmelden
+              </button>
+              <button type="button" onClick={onLogout} disabled={!loggedIn} className={itemClass}>
+                &gt; Abmelden
+              </button>
 
-                <button
-                  type="button"
-                  onClick={onStart}
-                  disabled={!loggedIn || !canStart || busy || active}
-                  className={itemClass}
-                >
-                  &gt; {busy ? "Starte …" : "Starten"}
-                </button>
-                <button type="button" onClick={onCancel} disabled={!loggedIn || !active} className={itemClass}>
-                  &gt; Abbrechen
-                </button>
-              </div>
-            </>
+              <div className="pt-[2cqw]" />
+
+              <button
+                type="button"
+                onClick={onStart}
+                disabled={!loggedIn || !canStart || busy || active}
+                className={itemClass}
+              >
+                &gt; {busy ? "Starte …" : "Starten"}
+              </button>
+              <button type="button" onClick={onCancel} disabled={!loggedIn || !active} className={itemClass}>
+                &gt; Abbrechen
+              </button>
+            </div>
           ) : (
-            <Leaderboard api={api} sessionId={player?.sessionId} top={15} />
+            <Leaderboard api={api} player={player} top={15} />
           )}
         </div>
       </div>
