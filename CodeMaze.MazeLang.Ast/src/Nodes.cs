@@ -39,15 +39,20 @@ public sealed record FunctionDecl(
 
 // ------------------------------------------------------- Direction values
 
-/// <summary>Expression that yields a direction.</summary>
-public abstract record DirectionExpr : Node
+// ---------------------------------------------------------------- Values
+
+/// <summary>A direction or a number: a literal, or a reference to a parameter.</summary>
+public abstract record ValueExpr : Node
 {
-    private protected DirectionExpr() { }
+    private protected ValueExpr() { }
 }
 
-public sealed record DirectionLiteral(Direction Value) : DirectionExpr;
+public sealed record DirectionLiteral(Direction Value) : ValueExpr;
 
-public sealed record ParameterRef(string Name) : DirectionExpr;
+public sealed record NumberLiteral(int Value) : ValueExpr;
+
+/// <summary>Refers to a parameter; whether it is a number or a direction is decided by use.</summary>
+public sealed record ParameterRef(string Name) : ValueExpr;
 
 // ----------------------------------------------------------- Expressions
 
@@ -75,10 +80,10 @@ public enum SenseKind
     Visited,
 }
 
-public sealed record Sense(SenseKind Kind, DirectionExpr Direction) : Expr;
+public sealed record Sense(SenseKind Kind, ValueExpr Direction) : Expr;
 
 /// <summary>Call of a user-defined function as an expression (the function must return a value).</summary>
-public sealed record CallExpr(string Function, IReadOnlyList<DirectionExpr> Arguments) : Expr;
+public sealed record CallExpr(string Function, IReadOnlyList<ValueExpr> Arguments) : Expr;
 
 // ------------------------------------------------------------ Statements
 
@@ -88,12 +93,12 @@ public abstract record Stmt : Node
 }
 
 /// <summary>Move one cell in the direction (or go back with <see cref="Direction.Back"/>).</summary>
-public sealed record Move(DirectionExpr Direction) : Stmt;
+public sealed record Move(ValueExpr Direction) : Stmt;
 
 /// <summary>Call of a user-defined function as a statement; a result is discarded.</summary>
-public sealed record CallStmt(string Function, IReadOnlyList<DirectionExpr> Arguments) : Stmt;
+public sealed record CallStmt(string Function, IReadOnlyList<ValueExpr> Arguments) : Stmt;
 
-public sealed record Repeat(int Count, IReadOnlyList<Stmt> Body) : Stmt;
+public sealed record Repeat(ValueExpr Count, IReadOnlyList<Stmt> Body) : Stmt;
 
 /// <summary>Infinite loop (ends by reaching the goal, crashing, or Return).</summary>
 public sealed record Forever(IReadOnlyList<Stmt> Body) : Stmt;

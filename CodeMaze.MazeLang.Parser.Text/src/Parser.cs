@@ -213,18 +213,24 @@ public sealed class MazeParser
                     {
                         Next();
                         var n = Peek;
-                        int count = 0;
+                        ValueExpr count;
                         if (n.Kind == TokenKind.Number)
                         {
                             Next();
-                            count = n.Number;
-                            Accept(Keyword.Times);                       // optional filler word
+                            count = new NumberLiteral(n.Number) { Location = n.Location };
+                            Accept(Keyword.Times);
+                        }
+                        else if (IsIdentifier(n) && n.Line == t.Line)
+                        {
+                            Next();
+                            count = new ParameterRef(n.Text) { Location = n.Location };
+                            Accept(Keyword.Times);
                         }
                         else
                         {
-                            // report, skip the rest of the header line, but keep parsing the body
                             _diags.Add(new Diagnostic($"Expected a number but found {Describe(n)}.", n.Location));
                             while (Peek.Kind != TokenKind.Eof && Peek.Line == t.Line) Next();
+                            count = new NumberLiteral(0) { Location = n.Location };
                         }
                         var body = ParseBlock();
                         Expect(Keyword.End);
@@ -351,7 +357,7 @@ public sealed class MazeParser
 
         // ------------------------------------------- directions & arguments
 
-        private DirectionExpr ParseDirection()
+        private ValueExpr ParseDirection()
         {
             var t = Peek;
             if (t.Kind == TokenKind.Word)
@@ -378,13 +384,25 @@ public sealed class MazeParser
             }
             throw Err($"Expected a direction but found {Describe(t)}.", t);
         }
+        private static bool IsArgumentStart(Token t) =>
+            t.Kind == TokenKind.Number || IsDirectionStart(t);
+        private ValueExpr ParseArgument()
+        {
+            var t = Peek;
+            if (t.Kind == TokenKind.Number)
+            {
+                Next();
+                return new NumberLiteral(t.Number) { Location = t.Location };
+            }
+            return ParseDirection();
+        }
 
-        private List<DirectionExpr> ParseArguments(Token nameTok)
+        private List<ValueExpr> ParseArguments(Token nameTok)
         {
             int max = _arity.TryGetValue(nameTok.Text, out var n) ? n : int.MaxValue;
-            var args = new List<DirectionExpr>();
-            while (args.Count < max && Peek.Line == nameTok.Line && IsDirectionStart(Peek))
-                args.Add(ParseDirection());
+            var args = new List<ValueExpr>();
+            while (args.Count < max && Peek.Line == nameTok.Line && IsArgumentStart(Peek))
+                args.Add(ParseArgument());
             return args;
         }
     }
