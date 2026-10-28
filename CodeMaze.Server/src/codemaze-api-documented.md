@@ -2,9 +2,9 @@
 
 Controlling backend for the maze coding game. The frontend sends code written in the game's DSL,
 the server compiles it, runs it in the interpreter and streams the interpreter's events back over a
-WebSocket.
+WebSocket. Players identify themselves with a reserved display name and can be ranked on a leaderboard.
 
-Five endpoints exist today:
+Eight endpoints exist today:
 
 | Endpoint | Purpose |
 |---|---|
@@ -13,10 +13,17 @@ Five endpoints exist today:
 | `GET  /api/maze/{difficulty}` | Generate a maze for a specific difficulty |
 | `POST /api/runs` | Prepare a run: compile the code and settle on a maze |
 | `GET  /api/runs/{runId}/ws` | WebSocket: execute the prepared run and stream its events |
+| `POST /api/players/reserve` | Reserve a display name and receive a confirmation code and a session key |
+| `POST /api/players/confirm` | Finish registration by retyping the confirmation code |
+| `POST /api/players/verify` | Returning player proves ownership of a name and receives a session key |
+| `GET  /api/scores/leaderboard` | Ranked list of players and their points per session |
+| `GET  /api/scores/{playerId}/{sessionId}` | Aggregated score for one player in one session |
 
-Typical flow: `GET /api/capabilities` once on startup, then per run `POST /api/runs` followed by the WebSocket.
+Typical flow: `GET /api/capabilities` once on startup, then identify the player (see [Player flow](#player-flow)),
+then per run `POST /api/runs` followed by the WebSocket. The leaderboard can be fetched at any time.
 
-Status: work in progress. No authentication yet.
+Status: work in progress. There is no authentication on the maze and run endpoints yet; players are identified
+by a reserved name plus a code (see [Players](#players)).
 
 ## Conventions
 
@@ -25,6 +32,8 @@ Status: work in progress. No authentication yet.
 - A position is always `{ "y": 0, "x": 1 }`.
 - Enums are sent as camelCase strings (`"hard"`, `"exitReached"`).
 - Directions are `up`, `down`, `left`, `right` and `back` (a step back through the walked path).
+- The player endpoints report errors as `{ "error": "<code>" }` (see [Players](#players)). The run and maze endpoints
+  use the error shapes described in their own sections.
 
 ### Maze format
 
@@ -48,6 +57,93 @@ Used by `GET /api/maze`, `GET /api/maze/{difficulty}`, by `POST /api/runs` (requ
 - The example is abbreviated. A real maze lists **every** cell (`width * height` of them), row by row.
   When sending a maze to the server, every cell must appear exactly once, and entrance and exit must lie inside the maze,
   otherwise the request is rejected with a 400.
+
+---
+
+## Player flow
+
+The diagrams below show the whole API as the frontend uses it, from a player stepping up to the game until the
+leaderboard is shown.
+
+### Identifying the player
+
+A display name can only be reserved once. If the name is already taken, the frontend asks the player for the code they
+received when they first reserved it and verifies it instead.
+
+```mermaid
+flowchart TD
+    A([Player enters a display name]) --> B["POST /api/players/reserve"]
+    B -->|200 OK| C[Show the code and keep the sessionId]
+    C --> D[Player retypes the code]
+    D --> E["POST /api/players/confirm"]
+    E -->|204 No Content| Z([Registered - ready to play])
+    E -->|400 confirmation_failed| D
+    B -->|400 invalid_name| A
+    B -->|409 name_taken| F[Ask the player for their code]
+    F --> G["POST /api/players/verify"]
+    G -->|200 OK| H[Keep the new sessionId]
+    H --> Z
+    G -->|401 wrong_code| F
+    G -->|404 unknown_player| A
+    G -->|429 locked| I[Show lockedUntil and wait]
+    I --> F
+```
+
+### From stepping up to the leaderboard
+
+```mermaid
+sequenceDiagram
+    actor P as Player
+    participant F as Frontend
+    participant S as CodeMaze.Server
+
+    F->>S: GET /api/capabilities
+    S-->>F: languages, difficulties, limits
+
+    P->>F: Enters display name
+    F->>S: POST /api/players/reserve
+    alt name is free (200)
+        S-->>F: player id, tag, code, sessionId
+        F->>P: Show the code
+        P->>F: Retypes the code
+        F->>S: POST /api/players/confirm
+        S-->>F: 204 No Content
+    else name is taken (409 name_taken)
+        F->>P: Ask for the code of this name
+        P->>F: Enters code
+        F->>S: POST /api/players/verify
+        alt code is correct (200)
+            S-->>F: sessionId, playerId, publicId, displayName
+        else wrong code (401) or locked (429)
+            S-->>F: error and lockedUntil
+            F->>P: Show error, let the player retry later
+        end
+    end
+
+    P->>F: Writes code and starts a run
+    F->>S: POST /api/runs
+    alt compile errors (400)
+        S-->>F: errors with line and column
+        F->>P: Show the errors in the editor
+    else compiled (200)
+        S-->>F: runId, webSocketPath, maze
+        F->>P: Render the maze
+        F->>S: Open WebSocket on webSocketPath
+        S-->>F: started
+        loop until the run is over
+            S-->>F: moved, moveBlocked or exitReached
+            F->>P: Animate the move
+        end
+        S-->>F: finished with outcome, steps, instructions
+        S--)F: Socket closed
+        F->>P: Show the result
+    end
+
+    P->>F: Opens the leaderboard
+    F->>S: GET /api/scores/leaderboard
+    S-->>F: ranked list
+    F->>P: Show the ranking
+```
 
 ---
 
@@ -349,10 +445,193 @@ Malformed or unknown messages are ignored; messages larger than 4 KB end the run
 
 ---
 
+## Players
+
+Players identify themselves with a **display name** that they reserve once. When a name is reserved the server
+generates a **code**; whoever knows the name and the code owns that player. There are no passwords or accounts.
+Each player also gets a public tag of the form `#007` (the player id, zero-padded to three digits), which is shown
+next to the display name so that names stay distinguishable.
+
+The endpoints return a `sessionId` (a session key). A session is what scores are grouped by on the
+[leaderboard](#get-apiscoresleaderboard).
+
+All player errors are JSON of the form `{ "error": "<code>" }`.
+
+### `POST /api/players/reserve`
+
+Reserves a display name. On success the server returns the generated code and a session key **right away**, so the
+player can start playing before registration is confirmed.
+
+**Request**
+
+```json
+{ "displayName": "Ada" }
+```
+
+**200 OK**
+
+```json
+{
+  "id": 7,
+  "publicId": "#007",
+  "displayName": "Ada",
+  "code": "<generated code>",
+  "sessionId": "<session key>"
+}
+```
+
+Show the `code` to the player and ask them to retype it ([`confirm`](#post-apiplayersconfirm)). They also need it
+later to come back as the same player.
+
+| Status | Body | Meaning |
+|---|---|---|
+| `400` | `{ "error": "invalid_name" }` | The display name is not acceptable. |
+| `409` | `{ "error": "name_taken" }` | The name is already reserved. Ask the player for their code and call [`verify`](#post-apiplayersverify) instead. |
+
+### `POST /api/players/confirm`
+
+Finishes registration: the player retypes the code they were shown after `reserve`.
+
+**Request**
+
+```json
+{ "displayName": "Ada", "code": "<code from reserve>" }
+```
+
+| Status | Body | Meaning |
+|---|---|---|
+| `204` | none | Confirmed. |
+| `400` | `{ "error": "confirmation_failed" }` | The code does not match. Let the player try again. |
+
+### `POST /api/players/verify`
+
+A returning player proves ownership of a name by sending the code they received when the name was reserved.
+Returns a fresh session key.
+
+**Request**
+
+```json
+{ "displayName": "Ada", "code": "<code from reserve>" }
+```
+
+**200 OK**
+
+```json
+{
+  "sessionId": "<session key>",
+  "playerId": 7,
+  "publicId": "#007",
+  "displayName": "Ada"
+}
+```
+
+| Status | Body | Meaning |
+|---|---|---|
+| `401` | `{ "error": "wrong_code", "lockedUntil": ... }` | The code is wrong. `lockedUntil` tells when the name is locked until (may be `null` while no lock is active yet). |
+| `404` | `{ "error": "unknown_player" }` | No player with this name exists. |
+| `429` | `{ "error": "locked", "lockedUntil": ... }` | Too many wrong attempts. The name is locked until `lockedUntil`; do not retry before then. |
+
+---
+
+## `GET /api/scores/leaderboard`
+
+Ranks players by their total points. Points of the same session are summed, so every row is one player in one
+session, not one single run.
+
+| Query parameter | Type | Required | Notes |
+|---|---|---|---|
+| `top` | int | no | Maximum number of rows. `0` returns all rows and is also the default when the parameter is omitted. Negative values are rejected. |
+
+```
+GET /api/scores/leaderboard?top=10
+```
+
+**200 OK**: an array, best first.
+
+```json
+[
+  {
+    "rank": 1,
+    "session": "<session key>",
+    "playerTag": "#007",
+    "displayName": "Ada",
+    "totalPoints": 1250,
+    "averageEfficiency": 0.82,
+    "lastPlayedAt": "2026-10-27T09:15:00Z"
+  }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `rank` | Position in the list, starting at 1. Equal points do not share a rank. |
+| `session` | The session the points were collected in. |
+| `playerTag` | Public tag of the player, e.g. `#007`. |
+| `displayName` | The player's display name. |
+| `totalPoints` | Sum of all points of this player in this session. |
+| `averageEfficiency` | Average efficiency over the scores of this session. |
+| `lastPlayedAt` | Time of the most recent score in this session. |
+
+**Ordering:** `totalPoints` descending. On a tie the row whose `lastPlayedAt` is **earlier** ranks higher (whoever reached
+the points first), then `session` as the last tie-breaker.
+
+**400 Bad Request**: `top` is negative. The body is the plain text `The top parameter must be 0 or greater.`
+
+The leaderboard is public and needs no session key. Because `top` defaults to `0`, a call without it returns
+**every** row; pass `top` for anything shown in the UI.
+
+---
+
+## `GET /api/scores/{playerId}/{sessionId}`
+
+Retrieves the aggregated score for a specific player in a specific session. Like the leaderboard, it sums points
+from all score records matching that player and session.
+
+| Parameter | Where | Type | Required | Notes |
+|---|---|---|---|---|
+| `playerId` | path | int | yes | Numeric player ID. |
+| `sessionId` | path | GUID | yes | Session UUID returned by the player reserve or verify endpoints. |
+
+```http
+GET /api/scores/7/3f0c8d0e-6a1f-4b3e-9d57-6f3b1c2a9e11
+```
+
+**200 OK**
+
+```json
+{
+  "session": "3f0c8d0e-6a1f-4b3e-9d57-6f3b1c2a9e11",
+  "playerTag": "#007",
+  "displayName": "Ada",
+  "totalPoints": 1250,
+  "averageEfficiency": 0.82,
+  "lastPlayedAt": "2026-10-27T09:15:00Z"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `session` | The session UUID the points were collected in. |
+| `playerTag` | Public tag of the player, e.g. `#007`. |
+| `displayName` | The player's display name. |
+| `totalPoints` | Sum of all points for this player in this session. |
+| `averageEfficiency` | Average efficiency across the matching score records. |
+| `lastPlayedAt` | Timestamp of the most recent matching score. |
+
+**404 Not Found**: no score records exist for the specified player and session. The body is the plain-text message
+`No score found for this player in this session.`
+
+This endpoint does not return a leaderboard rank; use `GET /api/scores/leaderboard` for rankings.
+
+---
+
 ## Known limitations
 
 - Maze generation is driven by `MazeGeneration:Mappings` in `appsettings.json`. Sizes or size/difficulty combinations
   not covered there are answered with `404` by the maze endpoints, even when the size is inside `maze.minSize` to `maze.maxSize`.
-- No authentication. The run id (an unguessable, one-time value) is the only protection of the WebSocket.
+- The maze and run endpoints have no authentication. The run id (an unguessable, one-time value) is the only protection of the WebSocket.
+  Players are identified by name and code only, there are no passwords or accounts.
+- `reserve` hands out a session key before `confirm` has been called, so confirmation is not required to play.
 - Prepared runs are kept in server memory, so the API currently only works with a single server instance.
+- The leaderboard returns all rows when `top` is omitted or `0`.
 - Browsers need the frontend origin to be configured (`Cors:AllowedOrigins`) when it is not served from the same origin as the API.

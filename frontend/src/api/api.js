@@ -23,9 +23,12 @@ export class ApiError extends Error {
   }
 
   /** Turns the server's different error shapes into one readable string. */
-  static describe(status, body) {
-    if (typeof body === "string") return body || `HTTP ${status}`;
-    if (body?.errors) {
+static describe(status, body) {
+  if (typeof body === "string") return body || `HTTP ${status}`;
+
+  if (body?.errors) {
+    // our own compile errors: [{ source, message, line, column }]
+    if (Array.isArray(body.errors)) {
       return body.errors
         .map(e => {
           const at = e.line != null ? ` (line ${e.line}${e.column != null ? ":" + e.column : ""})` : "";
@@ -33,9 +36,18 @@ export class ApiError extends Error {
         })
         .join("\n");
     }
-    if (body?.error) return body.error + (body.lockedUntil ? ` until ${body.lockedUntil}` : "");
-    return `HTTP ${status}`;
+    // ASP.NET validation errors: { Field: ["message", ...] }
+    if (typeof body.errors === "object") {
+      return Object.entries(body.errors)
+        .map(([field, msgs]) => `${field}: ${[].concat(msgs).join(", ")}`)
+        .join("\n");
+    }
   }
+
+  if (body?.error) return body.error + (body.lockedUntil ? ` until ${body.lockedUntil}` : "");
+  if (body?.title) return body.title;
+  return `HTTP ${status}`;
+}
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +119,19 @@ export class CodeMazeApi {
   leaderboard(top = 10) {
     return this.#request("GET", `/api/scores/leaderboard?top=${encodeURIComponent(top)}`);
   }
+
+/** GET /api/scores/{playerId}/{sessionId}. Returns null while the session has no scores (404). */
+async playerScore(playerId, sessionId) {
+  try {
+    return await this.#request(
+      "GET",
+      `/api/scores/${encodeURIComponent(playerId)}/${encodeURIComponent(sessionId)}`
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
 
   /* ---- runs ---- */
 

@@ -6,16 +6,17 @@ import GameOverModal from "./GameOverModal.jsx";
 import GameMenue from "./GameMenue.jsx";
 import GameInput from "./GameInput.jsx";
 import LevelCompleteModal from "./LevelCompleteModal.jsx";
+import PlayerDialog from "./PlayerDialog.jsx";
 
-const api = new CodeMazeApi(import.meta.env.API_BASE_URL ?? "http://localhost:8080");
+const api = new CodeMazeApi(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080");
 
 const MAZE_SIZE = 10;
 const DIFFICULTY = "easy";
 const LANGUAGE = "de"; // the block editor writes German keywords
 const STEP_DELAY_MS = 120; // client-side pacing of the moves (the server is asked not to wait)
 
-const buttonClass =
-    "border-2 border-[#35B23A] px-3 py-1 text-xs font-semibold text-[#35B23A] hover:bg-[#35B23A]/20 disabled:cursor-not-allowed disabled:opacity-40";
+//const buttonClass =
+//    "border-2 border-[#35B23A] px-3 py-1 text-xs font-semibold text-[#35B23A] hover:bg-[#35B23A]/20 disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function Game({ sessionId = null }) {
     const [rawMaze, setRawMaze] = useState(null); // maze JSON as sent by the server
@@ -26,6 +27,9 @@ export default function Game({ sessionId = null }) {
     const [error, setError] = useState(null);
     const [inputResetKey, setInputResetKey] = useState(0);
     const [, rerender] = useReducer((n) => n + 1, 0);
+    const [player, setPlayer] = useState(null); // { sessionId, playerId, publicId, displayName }
+    const [loginOpen, setLoginOpen] = useState(false);
+    const [score, setScore] = useState(0); // totalPoints from GET /api/scores/{playerId}/{sessionId}
 
     const runRef = useRef(null);
     const connRef = useRef(null);
@@ -70,7 +74,7 @@ export default function Game({ sessionId = null }) {
     }, []);
 
     async function startRun() {
-        if (!rawMaze || busy) return;
+        if (!player || !rawMaze || busy) return;
 
         const blockErrors = programErrorsRef.current;
         if (blockErrors.length > 0) {
@@ -88,6 +92,7 @@ export default function Game({ sessionId = null }) {
                 language: LANGUAGE,
                 maze: rawMaze,
                 stepDelayMs: 0,
+                sessionId: player.sessionId,
             });
 
             const next = installRun(res.maze);
@@ -127,6 +132,17 @@ export default function Game({ sessionId = null }) {
         setError(null);
     }
 
+    /** Stops the running program: tells the server to cancel, then returns to the start of the maze. */
+    function cancelRun() {
+        connRef.current?.cancel();
+        resetMaze();
+    }
+
+    function logout() {
+        if (active) cancelRun();
+        setPlayer(null);
+    }
+
     function restart() {
         resetMaze();
         programErrorsRef.current = [];
@@ -146,6 +162,23 @@ export default function Game({ sessionId = null }) {
     }
     const moves = model?.steps ?? 0;
 
+    const finished = model?.status === "finished";
+
+    useEffect(() => {
+        if (!player) {
+            setScore(0);
+            return;
+        }
+        let cancelled = false;
+        api
+            .playerScore(player.playerId, player.sessionId)
+            .then((s) => !cancelled && setScore(s?.totalPoints ?? 0))
+            .catch((e) => !cancelled && setError(e.message));
+        return () => {
+            cancelled = true;
+        };
+    }, [player, finished]);
+
     return (
         <main className="bg-[url('/assets/Background.png')] bg-center bg-contain font-[Silkscreen,monospace] text-white p-3 md:p-6">
             <div className="mx-auto w-full max-w-[1500px] border-4 border-[#272a28] bg-[#111] p-3">
@@ -157,23 +190,24 @@ export default function Game({ sessionId = null }) {
                         className="mx-auto aspect-square w-full max-w-[calc(100vh-7rem)]"
                     />
 
+
                     <div className="flex min-w-0 flex-col gap-2">
-                        <GameMenue restart={restart} moves={moves} status={status} />
+                        <GameMenue
+                            api={api}
+                            score={score}
+                            active={active}
+                            busy={busy}
+                            canStart={!!rawMaze}
+                            player={player}
+                            onLogin={() => setLoginOpen(true)}
+                            onLogout={logout}
+                            onStart={startRun}
+                            onCancel={cancelRun}
+                        />
 
-                        <div className="flex flex-wrap items-start gap-3">
-                            {active ? (
-                                <button type="button" className={buttonClass} onClick={resetMaze}>
-                                    Stopp
-                                </button>
-                            ) : (
-                                <button type="button" className={buttonClass} disabled={!rawMaze || busy} onClick={startRun}>
-                                    {busy ? "Starte …" : "Starten"}
-                                </button>
-                            )}
-                            {error && <p className="whitespace-pre-line text-xs text-red-400">{error}</p>}
-                        </div>
-
+                        {error && <p className="whitespace-pre-line text-xs text-red-400">{error}</p>}
                     </div>
+
                 </div>
 
                 {/* the editor spans the full width, below the maze and the menu */}
@@ -191,6 +225,14 @@ export default function Game({ sessionId = null }) {
 
             {status === "game over" && <GameOverModal moves={moves} restart={restart} onClose={closeModal} />}
             {status === "level complete" && <LevelCompleteModal moves={moves} restart={restart} onClose={closeModal} />}
+            <PlayerDialog
+                api={api}
+                open={loginOpen}
+                onClose={(result) => {
+                    setLoginOpen(false);
+                    if (result) setPlayer(result);
+                }}
+            />
         </main>
     );
 }

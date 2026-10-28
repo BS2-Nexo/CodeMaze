@@ -54,4 +54,43 @@ public class ScoresController(CodeMazeDbContext db) : ControllerBase
             x.LastPlayedAt
         }));
     }
+
+    /// <summary>
+    /// Retrieves the score for a specific player in a specific session.
+    /// </summary>
+    [HttpGet("{playerId:int}/{sessionId:Guid}")]
+    public async Task<IActionResult> GetPlayerScore(
+        [FromRoute] int playerId,
+        [FromRoute] Guid sessionId,
+        CancellationToken ct = default)
+    {
+        var score = await db.Scores
+            .Where(s => s.PlayerId == playerId && s.Session == sessionId)
+            .GroupBy(s => new { s.Session, s.PlayerId, s.Player.DisplayName })
+            .Select(g => new
+            {
+                g.Key.Session,
+                g.Key.PlayerId,
+                g.Key.DisplayName,
+                TotalPoints = g.Sum(s => (long)s.Points),
+                AverageEfficiency = g.Average(s => s.Efficiency),
+                LastPlayedAt = g.Max(s => s.CreatedAt)
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (score is null)
+        {
+            return NotFound("No score found for this player in this session.");
+        }
+
+        return Ok(new
+        {
+            score.Session,
+            PlayerTag = $"#{score.PlayerId:000}",
+            score.DisplayName,
+            score.TotalPoints,
+            score.AverageEfficiency,
+            score.LastPlayedAt
+        });
+    }
 }
