@@ -15,6 +15,7 @@ import {
     getPalette,
     normalizeName,
 } from "../blocks/blockProgram.js"; // adjust to where this file lives
+import { translateError } from "../api/translateError.js"; // adjust to where this file lives
 
 // ---------- look ----------
 
@@ -478,7 +479,7 @@ const EDITOR_TEXT = "font-mono text-xs leading-5 whitespace-pre p-2";
 function normalizeError(e) {
     return {
         source: e.source ?? e.Source ?? "",
-        message: e.message ?? e.Message ?? "",
+        message: translateError(e.message ?? e.Message ?? ""),
         line: e.line ?? e.Line ?? null,
         column: e.column ?? e.Column ?? null,
     };
