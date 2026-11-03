@@ -214,25 +214,31 @@ export default function Game() {
         return { next, done };
     }
 
+
     async function startRun() {
         if (!player || !rawMaze || busy || gauntlet) return;
 
+        setError(null);
+        inputRef.current?.clearHighlight();
+
+        // block validation errors: shown by the editor
         const blockErrors = programErrorsRef.current;
         if (blockErrors.length > 0) {
-            setError(blockErrors[0].message);
+            inputRef.current?.highlightError([{ message: blockErrors[0].message }]);
+            setView("code");
             return;
         }
 
-        setError(null);
-        inputRef.current?.clearHighlight();
         setBusy(true);
         try {
             await launch(inputRef.current.getSource(), rawMaze); // busy only covers the POST
             setView("maze");
         } catch (e) {
-            setError(e.message);
             const list = e.body?.errors; // compile errors: [{ source, message, line, column }]
-            if (Array.isArray(list)) inputRef.current?.highlightError(list.filter((x) => x.source === "code"));
+            const codeErrors = Array.isArray(list) ? list.filter((x) => x.source === "code") : [];
+            // compile errors with a position, otherwise just the message
+            inputRef.current?.highlightError(codeErrors.length > 0 ? codeErrors : [{ message: e.message }]);
+            setView("code"); // the error bar is part of the editor, so make sure it is visible
         } finally {
             setBusy(false);
         }
@@ -451,8 +457,6 @@ export default function Game() {
                         </div>
                     </div>
                 </div>
-
-                {error && <p className="mt-2 whitespace-pre-line text-xs text-red-400">{error}</p>}
             </div>
 
             {status === "game over" && <GameOverModal moves={moves} restart={restart} onClose={closeModal} />}

@@ -407,10 +407,31 @@ function NumberDialog({ initial, onSave, onClose }) {
     );
 }
 
-// ---------- mode switch ----------
+// ---------- mode switch + file button ----------
 
-/** Toggle between block input and plain text input. */
-function ModeSwitch({ mode, onChange }) {
+/** A rolled-up scroll (same shape as the "scroll" icon of the lucide set). */
+function ScrollIcon({ className = "" }) {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+            aria-hidden="true"
+        >
+            <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+            <path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" />
+        </svg>
+    );
+}
+
+/** Toggle between block input and plain text input, plus the button that loads a program from a file. */
+function ModeSwitch({ mode, onChange, onPickFile }) {
     const isText = mode === "text";
     return (
         <div className="mb-3 flex shrink-0 items-center gap-2 text-xs font-semibold">
@@ -429,6 +450,20 @@ function ModeSwitch({ mode, onChange }) {
                 />
             </button>
             <span className={isText ? "text-[#ffca20]" : "text-white/40"}>Text</span>
+
+            <button
+                type="button"
+                onClick={onPickFile}
+                aria-label="Programm aus Datei laden"
+                title={
+                    isText
+                        ? "Schriftrolle öffnen: Der Inhalt der Datei wird unverändert in das Textfeld übernommen."
+                        : "Schriftrolle öffnen: Der Inhalt der Datei wird in Bausteine umgewandelt."
+                }
+                className="ml-auto flex h-8 w-8 items-center justify-center border-2 border-[#ffca20] text-[#ffca20] hover:bg-[#ffca20]/20"
+            >
+                <ScrollIcon />
+            </button>
         </div>
     );
 }
@@ -490,6 +525,26 @@ function Highlighted({ text, ranges }) {
     });
     parts.push(text.slice(cursor));
     return <>{parts}</>;
+}
+
+/** One line per error, laid over the bottom edge of the editor area. Takes no space in the layout. */
+function ErrorBar({ errors }) {
+    if (errors.length === 0) return null;
+    return (
+        <div className="sticky bottom-0 z-10 h-0 shrink-0">
+            <ul
+                role="alert"
+                className="absolute inset-x-0 bottom-0 max-h-32 overflow-auto border-t-2 border-red-400 bg-black/90 p-2 text-xs text-red-400"
+            >
+                {errors.map((e, i) => (
+                    <li key={i}>
+                        {e.line ? `Zeile ${e.line}${e.column ? `, Spalte ${e.column}` : ""}: ` : ""}
+                        {e.message}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
 }
 
 function TextEditor({ value, onChange, errors }) {
@@ -570,22 +625,13 @@ function TextEditor({ value, onChange, errors }) {
                     />
                 </div>
             </div>
-
-            {errors.length > 0 && (
-                <ul className="mt-1 shrink-0 text-[10px] text-red-400" aria-live="polite">
-                    {errors.map((e, i) => (
-                        <li key={i}>
-                            {e.line ? `Zeile ${e.line}${e.column ? `, Spalte ${e.column}` : ""}: ` : ""}
-                            {e.message}
-                        </li>
-                    ))}
-                </ul>
-            )}
         </div>
     );
 }
 
 // ---------- main component ----------
+
+const MAX_FILE_BYTES = 200 * 1024; // a program is a few lines; anything bigger is surely the wrong file
 
 /**
  * Props:
@@ -596,6 +642,11 @@ function TextEditor({ value, onChange, errors }) {
  *   status           "game over" shows the level-complete hint in the empty block field
  *   onProgramChange  ({ mode, source, errors }) on every edit; errors are block-validation
  *                    errors (always [] in text mode)
+ *
+ * The scroll button next to the mode switch loads a program from a file:
+ *   text view    the file content is copied into the text input as it is
+ *   block view   the file content is converted with BlockProgram.fromSource(); if that fails the
+ *                blocks stay as they were and the reason is shown
  *
  * Methods on the ref (works the same in both modes):
  *   getSource()               current program as a plain string
@@ -615,7 +666,9 @@ const GameInput = forwardRef(function GameInput({ code = null, status, onProgram
     const [mode, setMode] = useState("blocks"); // "blocks" | "text"
     const [text, setText] = useState(code ?? "");
     const [textErrors, setTextErrors] = useState([]); // normalized RunErrors shown in the text input
+    const [fileError, setFileError] = useState(null); // why the last loaded file could not be used
     const overRef = useRef(false);
+    const fileInputRef = useRef(null);
     const notifyRef = useRef(onProgramChange);
     notifyRef.current = onProgramChange;
     const modeRef = useRef(mode);
@@ -668,6 +721,7 @@ const GameInput = forwardRef(function GameInput({ code = null, status, onProgram
             overRef.current = false;
             setNumberDialog(null);
             setFocus({});
+            setFileError(null);
 
             let converted = false;
             let errors = [];
@@ -710,6 +764,7 @@ const GameInput = forwardRef(function GameInput({ code = null, status, onProgram
         setOver(false);
         setNumberDialog(null);
         setTextErrors([]);
+        setFileError(null);
         emit();
     }
 
@@ -717,6 +772,70 @@ const GameInput = forwardRef(function GameInput({ code = null, status, onProgram
         textRef.current = value;
         setText(value);
         setTextErrors([]); // positions are stale after an edit
+        emit();
+    }
+
+    // ---------- loading a program from a file ----------
+
+    function pickFile() {
+        fileInputRef.current?.click();
+    }
+
+    async function onFileChosen(event) {
+        const file = event.target.files?.[0];
+        event.target.value = ""; // so the same file can be chosen again
+        if (!file) return;
+
+        if (file.size > MAX_FILE_BYTES) {
+            setFileError(`Die Datei „${file.name}“ ist zu groß (höchstens ${MAX_FILE_BYTES / 1024} KB).`);
+            return;
+        }
+
+        let content;
+        try {
+            content = await file.text();
+        } catch {
+            setFileError(`Die Datei „${file.name}“ konnte nicht gelesen werden.`);
+            return;
+        }
+        content = content.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+
+        if (modeRef.current === "text") {
+            // text view: take the file as it is
+            textRef.current = content;
+            setText(content);
+            setTextErrors([]);
+            setFileError(null);
+            emit();
+            return;
+        }
+
+        // block view: try to convert; on failure the blocks stay as they are
+        if (typeof program.fromSource !== "function") {
+            setFileError("Das Umwandeln in Bausteine wird noch nicht unterstützt. Wechsle zur Texteingabe.");
+            return;
+        }
+        try {
+            program.fromSource(content);
+        } catch (e) {
+            const list = (Array.isArray(e?.errors) ? e.errors : [{ message: e?.message ?? String(e) }]).map(
+                normalizeError,
+            );
+            const first = list[0];
+            const at = first?.line ? ` (Zeile ${first.line}${first.column ? `, Spalte ${first.column}` : ""})` : "";
+            const more = list.length > 1 ? ` und ${list.length - 1} weitere(r) Fehler` : "";
+            setFileError(
+                `„${file.name}“ lässt sich nicht in Bausteine umwandeln: ${first?.message ?? "unbekannter Fehler"}${at}${more}. ` +
+                "Wechsle zur Texteingabe, um die Datei unverändert zu laden.",
+            );
+            return;
+        }
+
+        textRef.current = content;
+        setText(content);
+        setFocus({});
+        setNumberDialog(null);
+        setFileError(null);
         emit();
     }
 
@@ -800,7 +919,23 @@ const GameInput = forwardRef(function GameInput({ code = null, status, onProgram
 
     return (
         <section className="col-span-full flex min-h-full flex-col" aria-label="Code-Eingabe">
-            <ModeSwitch mode={mode} onChange={changeMode} />
+            <ModeSwitch mode={mode} onChange={changeMode} onPickFile={pickFile} />
+
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,text/plain"
+                className="hidden"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={onFileChosen}
+            />
+
+            {fileError && (
+                <p className="-mt-1 mb-2 shrink-0 text-[10px] text-red-400" role="alert">
+                    {fileError}
+                </p>
+            )}
 
             {mode === "text" ? (
                 <TextEditor value={text} onChange={changeText} errors={textErrors} />
@@ -860,6 +995,7 @@ const GameInput = forwardRef(function GameInput({ code = null, status, onProgram
                     )}
                 </>
             )}
+            <ErrorBar errors={textErrors} />
         </section>
     );
 });
