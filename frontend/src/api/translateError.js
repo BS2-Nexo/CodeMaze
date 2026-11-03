@@ -26,6 +26,29 @@ const RULES = [
     [/^The number '(.+)' is too large\.$/, (n) => `Die Zahl '${n}' ist zu groß.`],
     [/^Unexpected character '(.+)'\.$/, (c) => `Unerwartetes Zeichen '${c}'.`],
 
+    // ---- server: request validation (RunsController)
+    [/^code is required\.$/, () => "Es muss Code angegeben werden."],
+    [/^code must not exceed (.+) characters\.$/, (n) => `Der Code darf höchstens ${n} Zeichen lang sein.`],
+    [/^sessionId must be a valid GUID\.$/, () => "Die Sitzungs-ID muss eine gültige GUID sein."],
+    [
+        /^languageDefinition must not exceed (.+) characters\.$/,
+        (n) => `Die Sprachdefinition darf höchstens ${n} Zeichen lang sein.`,
+    ],
+    [
+        /^Unknown language '(.+)'\. Available: (.*)\.$/,
+        (name, available) => `Unbekannte Sprache '${name}'. Verfügbar: ${available}.`,
+    ],
+    [
+        /^Provide a language name or a languageDefinition\.$/,
+        () => "Es muss ein Sprachname oder eine Sprachdefinition angegeben werden.",
+    ],
+    [/^The provided maze is too large\.$/, () => "Das übergebene Labyrinth ist zu groß."],
+    [
+        /^Provide a maze, or a size between (.+) and (.+)\.$/,
+        (min, max) => `Es muss ein Labyrinth oder eine Größe zwischen ${min} und ${max} angegeben werden.`,
+    ],
+    [/^Unknown difficulty\.$/, () => "Unbekannter Schwierigkeitsgrad."],
+
     // ---- compiler: specific "Expected ..." messages first
     [/^Expected a number but found a direction\.$/, () => "Zahl erwartet, aber Richtung gefunden."],
     [/^Expected a direction but found a number\.$/, () => "Richtung erwartet, aber Zahl gefunden."],
