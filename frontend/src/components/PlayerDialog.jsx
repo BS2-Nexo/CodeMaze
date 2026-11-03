@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/api.js"; // adjust paths to where the files live
 
 const inputClass =
-    "w-full border-2 border-[#35B23A] bg-black px-2 py-1 text-sm text-white outline-none focus:bg-[#35B23A]/10";
+    "w-full border-[3px] border-[#35B23A] bg-black px-3 py-1.5 text-xl text-white outline-none focus:bg-[#35B23A]/10";
 const buttonClass =
-    "border-2 border-[#35B23A] px-3 py-1 text-xs font-semibold text-[#35B23A] hover:bg-[#35B23A]/20 disabled:cursor-not-allowed disabled:opacity-40";
+    "border-[3px] border-[#35B23A] px-4 py-1.5 text-base font-semibold text-[#35B23A] hover:bg-[#35B23A]/20 disabled:cursor-not-allowed disabled:opacity-40";
 
 const ERROR_TEXT = {
     invalid_name: "Dieser Name ist nicht zulässig.",
@@ -19,7 +19,7 @@ const ERROR_TEXT = {
  * Props:
  *   api      CodeMazeApi instance
  *   open     whether the dialog is shown
- *   onClose  called with { sessionId, playerId, publicId, displayName } on success,
+ *   onClose  called with { sessionId, playerId, publicId, displayName, dslProgram } on success,
  *            or with null when the dialog was cancelled
  */
 export default function PlayerDialog({ api, open, onClose }) {
@@ -145,7 +145,6 @@ export default function PlayerDialog({ api, open, onClose }) {
                     dslProgram: res.dslProgram ?? null,
                 });
             }
-
         } catch (e) {
             handleFailure(e);
         } finally {
@@ -184,11 +183,14 @@ export default function PlayerDialog({ api, open, onClose }) {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 font-[Silkscreen,monospace] text-white"
             onKeyDown={(e) => e.key === "Escape" && onClose(null)}
         >
-            <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 border-4 border-[#272a28] bg-[#111] p-5">
-                <h2 className="text-sm uppercase tracking-[0.2em]">{title}</h2>
+            <form
+                onSubmit={onSubmit}
+                className="max-h-full w-full max-w-xl space-y-6 overflow-y-auto border-[6px] border-[#272a28] bg-[#111] p-8"
+            >
+                <h2 className="text-xl uppercase tracking-[0.2em]">{title}</h2>
 
                 {step === "name" && (
-                    <label className="block space-y-1 text-xs">
+                    <label className="block space-y-1.5 text-base">
                         Spielername
                         <input
                             ref={inputRef}
@@ -203,11 +205,11 @@ export default function PlayerDialog({ api, open, onClose }) {
 
                 {step === "login" && (
                     <>
-                        <p className="text-xs">
+                        <p className="text-base">
                             Der Name „{name}“ ist bereits vergeben. Gib den Code ein, den du bei der Registrierung
                             erhalten hast.
                         </p>
-                        <label className="block space-y-1 text-xs">
+                        <label className="block space-y-1.5 text-base">
                             Code
                             <input
                                 ref={inputRef}
@@ -223,14 +225,14 @@ export default function PlayerDialog({ api, open, onClose }) {
 
                 {step === "confirm" && reserved && (
                     <>
-                        <p className="text-xs">
+                        <p className="text-base">
                             Der Name „{reserved.displayName}“ ist frei und gehört dir als {reserved.publicId}. Das ist
                             dein Code. Merke ihn dir, du brauchst ihn zum späteren Anmelden.
                         </p>
-                        <p className="break-all border-2 border-dashed border-[#ffb900] p-2 text-center text-sm text-[#ffb900]">
+                        <p className="break-all border-[3px] border-dashed border-[#ffb900] p-3 text-center text-xl text-[#ffb900]">
                             {reserved.code}
                         </p>
-                        <label className="block space-y-1 text-xs">
+                        <label className="block space-y-1.5 text-base">
                             Code zur Bestätigung noch einmal eingeben
                             <input
                                 ref={inputRef}
@@ -245,16 +247,16 @@ export default function PlayerDialog({ api, open, onClose }) {
                 )}
 
                 {step === "locked" && (
-                    <p className="text-xs">
+                    <p className="text-base">
                         Zu viele Fehlversuche. Der Name „{name}“ ist gesperrt
                         {!Number.isNaN(lockEnd) && ` bis ${new Date(lockEnd).toLocaleString("de-DE")}`}.
-                        {secondsLeft > 0 && <span className="mt-2 block text-[#ffb900]">Noch {secondsLeft} s</span>}
+                        {secondsLeft > 0 && <span className="mt-3 block text-[#ffb900]">Noch {secondsLeft} s</span>}
                     </p>
                 )}
 
-                {error && <p className="whitespace-pre-line text-xs text-red-400">{error}</p>}
+                {error && <p className="whitespace-pre-line text-base text-red-400">{error}</p>}
 
-                <div className="flex flex-wrap justify-end gap-2">
+                <div className="flex flex-wrap justify-end gap-3">
                     {(step === "login" || step === "confirm" || step === "locked") && (
                         <button type="button" className={buttonClass} onClick={backToName} disabled={busy}>
                             Anderer Name

@@ -52,6 +52,47 @@ function TintedSprite({ tint, className = "" }) {
   return <canvas ref={canvasRef} aria-hidden="true" className={`block [image-rendering:pixelated] ${className}`} />;
 }
 
+// Border colours, taken from the frame image.
+const RED = "border-[#d04545]";
+const AMBER_HOVER = "enabled:hover:border-[#ffb900] enabled:hover:bg-[#ffb900]/15";
+
+/**
+ * The dashed inner line shared by all framed buttons. It takes the colour of the button's
+ * outer border (border-inherit), so hover and selected states colour both lines at once.
+ */
+function InnerLine({ inset, width = "border-2", className = "" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`pointer-events-none absolute border-dashed border-inherit ${width} ${className}`}
+      style={{ inset }}
+    />
+  );
+}
+
+/**
+ * A big, centered menu button with a toned-down version of the frame's border:
+ * a solid brick-red outer line and a dashed inner line. `active` fills it in amber
+ * (used for the Labyrinth / Code toggle).
+ */
+function MenuButton({ children, onClick, disabled = false, active = false, pressed }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={pressed}
+      className={`relative flex min-h-[9cqw] w-full items-center justify-center border-[3px] px-[2.5cqw] py-[2cqw] text-center font-black uppercase tracking-[0.12em] focus-visible:outline-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40 ${active
+        ? "border-[#d48a00] bg-[#ffb900] text-black"
+        : `${RED} bg-black/70 text-white ${AMBER_HOVER} enabled:hover:text-[#ffb900] enabled:active:bg-[#ffb900]/30`
+        }`}
+    >
+      <InnerLine inset="0.8cqw" className={active ? "!border-black/60" : ""} />
+      <span className="relative">{children}</span>
+    </button>
+  );
+}
+
 export default function GameMenue({
   api,
   active,
@@ -69,13 +110,9 @@ export default function GameMenue({
 }) {
   const [tab, setTab] = useState("game"); // "game" | "leaderboard"
 
-  const itemClass =
-    "block w-full text-left hover:text-[#ffb900] focus-visible:outline-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-inherit";
   const tabClass = (name) =>
-    `flex-1 border-b-2 text-center font-black uppercase tracking-[0.15em] ${tab === name ? "border-[#ffb900] text-[#ffb900]" : "border-transparent hover:text-[#ffb900]"
+    `flex-1 border-b-2 py-[1.5cqw] text-center font-black uppercase tracking-[0.15em] ${tab === name ? "border-[#ffb900] text-[#ffb900]" : "border-transparent hover:text-[#ffb900]"
     }`;
-  const viewClass = (name) =>
-    `${itemClass} ${view === name ? "text-[#ffb900]" : ""}`;
 
   const loggedIn = !!player;
 
@@ -121,18 +158,20 @@ export default function GameMenue({
 
         <div className="mt-[3cqw] flex min-h-0 flex-1 flex-col overflow-y-auto">
           {tab === "game" ? (
-            <div className="space-y-1 font-black uppercase tracking-[0.15em]">
-              {/* view toggle */}
-              <button type="button" onClick={() => onViewChange("maze")} className={viewClass("maze")}>
-                &gt; Labyrinth
-              </button>
-              <button type="button" onClick={() => onViewChange("code")} className={viewClass("code")}>
-                &gt; Code
-              </button>
+            <div className="flex flex-col items-center gap-[4cqw]">
+              {/* 1. login / logout */}
+              <div className="grid w-full grid-cols-2 gap-[2cqw]">
+                <MenuButton onClick={onLogin} disabled={loggedIn}>
+                  Anmelden
+                </MenuButton>
+                <MenuButton onClick={onLogout} disabled={!loggedIn}>
+                  Abmelden
+                </MenuButton>
+              </div>
 
-              {/* player figure: the sprite in the available tints, always visible */}
+              {/* 2. player figure: the sprite in the available tints (original size) */}
               {onPlayerTintChange && (
-                <div role="group" aria-label="Spielfigur" className="flex flex-wrap gap-[1.5cqw] pt-[2cqw]">
+                <div role="group" aria-label="Spielfigur" className="flex flex-wrap justify-center gap-[1.5cqw]">
                   {PLAYER_TINTS.map(({ label, tint }) => {
                     const selected = tint === playerTint;
                     return (
@@ -143,38 +182,38 @@ export default function GameMenue({
                         aria-label={label}
                         aria-pressed={selected}
                         onClick={() => onPlayerTintChange(tint)}
-                        className={`border-2 bg-black/70 p-[0.8cqw] hover:border-[#ffb900] focus-visible:outline-2 focus-visible:outline-white ${selected ? "border-[#ffb900]" : "border-white/40"
+                        className={`relative border-[3px] p-[0.8cqw] focus-visible:outline-2 focus-visible:outline-white ${selected
+                          ? "border-[#ffb900] bg-[#ffb900]/25"
+                          : `${RED} bg-black/70 hover:border-[#ffb900] hover:bg-[#ffb900]/15`
                           }`}
                       >
-                        <TintedSprite tint={tint} className="h-[9cqw] w-[9cqw]" />
+                        <InnerLine inset="0.15cqw" width="border" />
+                        <TintedSprite tint={tint} className="relative h-[9cqw] w-[9cqw]" />
                       </button>
                     );
                   })}
                 </div>
               )}
 
-              <div className="pt-[2cqw]" />
+              {/* 3. view toggle */}
+              <div className="grid w-full grid-cols-2 gap-[2cqw]">
+                <MenuButton onClick={() => onViewChange("maze")} active={view === "maze"} pressed={view === "maze"}>
+                  Labyrinth
+                </MenuButton>
+                <MenuButton onClick={() => onViewChange("code")} active={view === "code"} pressed={view === "code"}>
+                  Code
+                </MenuButton>
+              </div>
 
-              <button type="button" onClick={onLogin} disabled={loggedIn} className={itemClass}>
-                &gt; Anmelden
-              </button>
-              <button type="button" onClick={onLogout} disabled={!loggedIn} className={itemClass}>
-                &gt; Abmelden
-              </button>
-
-              <div className="pt-[2cqw]" />
-
-              <button
-                type="button"
-                onClick={onStart}
-                disabled={!loggedIn || !canStart || busy || active}
-                className={itemClass}
-              >
-                &gt; {busy ? "Starte …" : "Starten"}
-              </button>
-              <button type="button" onClick={onCancel} disabled={!loggedIn || !active} className={itemClass}>
-                &gt; Abbrechen
-              </button>
+              {/* 4. start / cancel */}
+              <div className="grid w-full grid-cols-2 gap-[2cqw]">
+                <MenuButton onClick={onStart} disabled={!loggedIn || !canStart || busy || active}>
+                  {busy ? "Starte …" : "Starten"}
+                </MenuButton>
+                <MenuButton onClick={onCancel} disabled={!loggedIn || !active}>
+                  Abbrechen
+                </MenuButton>
+              </div>
             </div>
           ) : (
             <Leaderboard api={api} player={player} top={15} />
