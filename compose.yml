@@ -1,3 +1,5 @@
+x-connection: &connection "${CODEMAZE_CONNECTION:-Host=postgres;Port=5432;Database=codemaze;Username=codemaze;Password=password}"
+
 services:
   postgres:
     image: postgres:17
@@ -17,6 +19,19 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: CodeMaze.Server/src/Dockerfile.migrate
+      args:
+        DOTNET_VERSION: "10.0"
+    container_name: codemaze-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["--connection", *connection]
+
   server:
     build:
       context: .
@@ -28,10 +43,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     environment:
-      ConnectionStrings__CodeMaze: "Host=postgres;Port=5432;Database=codemaze;Username=codemaze;Password=password"
+      ConnectionStrings__CodeMaze: *connection
 
   frontend:
     build:
