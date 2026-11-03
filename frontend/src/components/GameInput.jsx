@@ -66,6 +66,8 @@ const LABEL_HELP = {
     gehe: "Eine Bewegung für die Figur: Sie geht in die Richtung, die du ins Feld einsetzt.",
     ergebnis: "Wird in Funktionen benutzt, um etwas zurückzugeben.",
     immer: "Wiederholt die Bausteine darin endlos. Aufgehört wird erst, wenn das Labyrinth gelöst ist.",
+    wenn: "Die Bausteine darin laufen nur, wenn die Bedingung im Feld zutrifft, zum Beispiel „frei“.",
+    sonst: "Die Bausteine darin laufen, wenn die Bedingung vom „wenn“ davor nicht zutrifft. Muss direkt unter einem „wenn“ stehen.",
 };
 
 /**
@@ -587,6 +589,10 @@ function TextEditor({ value, onChange, errors }) {
 
 /**
  * Props:
+ *   code             a saved program as plain text, or null (default) for "nothing given".
+ *                    A string is put into the text input and converted to blocks with
+ *                    BlockProgram.fromSource(); it is loaded again whenever the value changes.
+ *                    If it converts, the block view is shown, otherwise the text view with the errors.
  *   status           "game over" shows the level-complete hint in the empty block field
  *   onProgramChange  ({ mode, source, errors }) on every edit; errors are block-validation
  *                    errors (always [] in text mode)
@@ -597,8 +603,9 @@ function TextEditor({ value, onChange, errors }) {
  *                             was marked (false in block mode or without a line)
  *   clearHighlight()          remove the marks
  *   getMode()                 "blocks" | "text"
+ *   loadSource(text)          same as the `code` prop; returns { converted, errors }
  */
-const GameInput = forwardRef(function GameInput({ status, onProgramChange }, ref) {
+const GameInput = forwardRef(function GameInput({ code = null, status, onProgramChange }, ref) {
     const [program] = useState(() => new BlockProgram());
     const [, setVersion] = useState(0);
     const [focus, setFocus] = useState({});
@@ -606,7 +613,7 @@ const GameInput = forwardRef(function GameInput({ status, onProgramChange }, ref
     const [isDragOver, setIsDragOver] = useState(false);
     const [numberDialog, setNumberDialog] = useState(null); // { id, isNew }
     const [mode, setMode] = useState("blocks"); // "blocks" | "text"
-    const [text, setText] = useState("");
+    const [text, setText] = useState(code ?? "");
     const [textErrors, setTextErrors] = useState([]); // normalized RunErrors shown in the text input
     const overRef = useRef(false);
     const notifyRef = useRef(onProgramChange);
@@ -646,10 +653,53 @@ const GameInput = forwardRef(function GameInput({ status, onProgramChange }, ref
 
     const clearHighlight = useCallback(() => setTextErrors([]), []);
 
+    /**
+     * Loads a saved program: the text always goes into the text input; then it is converted to blocks.
+     * Needs BlockProgram.fromSource(text), which replaces the whole program and throws (optionally with
+     * `error.errors = [{ message, line, column }]`) if the text can't be converted, leaving the blocks
+     * unchanged. If the conversion works the block view is shown, otherwise the text view with the errors.
+     */
+    const loadSource = useCallback(
+        (source) => {
+            textRef.current = source;
+            setText(source);
+            setDrag(null);
+            setIsDragOver(false);
+            overRef.current = false;
+            setNumberDialog(null);
+            setFocus({});
+
+            let converted = false;
+            let errors = [];
+            if (typeof program.fromSource === "function") {
+                try {
+                    program.fromSource(source);
+                    converted = true;
+                } catch (e) {
+                    const list = Array.isArray(e?.errors) ? e.errors : [{ message: e?.message ?? String(e) }];
+                    errors = list.map(normalizeError);
+                }
+            }
+
+            const next = converted ? "blocks" : "text";
+            modeRef.current = next;
+            setMode(next);
+            setTextErrors(errors);
+            emit();
+            return { converted, errors };
+        },
+        [program, emit],
+    );
+
+    // a program handed in from outside (save state); null = nothing given, nothing to convert
+    useEffect(() => {
+        if (code != null) loadSource(code);
+    }, [code, loadSource]);
+
     useImperativeHandle(
         ref,
-        () => ({ getSource, highlightError, clearHighlight, getMode: () => modeRef.current }),
-        [getSource, highlightError, clearHighlight],
+        () => ({ getSource, highlightError, clearHighlight, loadSource, getMode: () => modeRef.current }),
+        [getSource, highlightError, clearHighlight, loadSource],
     );
 
     function changeMode(next) {

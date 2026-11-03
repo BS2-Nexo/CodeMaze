@@ -1,7 +1,8 @@
 // src/blocks/blockProgram.js
 //
 // Block model for MazeLang. Holds the program as a tree and turns it into
-// source text on demand. No UI framework: wire it up through subscribe().
+// source text on demand (toSource) and back (fromSource). No UI framework:
+// wire it up through subscribe().
 
 const IDENT = /^[a-zäöüß_][a-zäöüß0-9_]*$/i;
 
@@ -241,6 +242,29 @@ export class BlockProgram {
   toSource() {
     const lines = this._stmts(this.root, 0);
     return lines.length ? lines.join('\n') + '\n' : '';
+  }
+
+  /**
+   * The reverse of toSource(): replaces the whole program with the blocks described by `source`.
+   * Reads what toSource() writes ("?" = empty slot) and is forgiving about indentation, blank lines
+   * and upper/lower case. It checks the shape of the program (what fits into which slot, "ende"
+   * closing every block), not its meaning: use validate() for that, as for hand-built programs.
+   *
+   * If the text can't be converted this throws an Error with
+   *   error.errors = [{ source: 'code', message, line, column }]   (line/column are 1-based)
+   * and the program stays as it was.
+   */
+  fromSource(source) {
+    const savedNext = this._next;
+    let nodes;
+    try {
+      nodes = parseSource(source, (type, props) => this._create(type, props));
+    } catch (e) {
+      this._next = savedNext;
+      throw e;
+    }
+    this.root = nodes;
+    this._emit();
   }
 
   _stmts(list, depth) {
@@ -650,4 +674,289 @@ export class BlockProgram {
   _emit() {
     this._listeners.forEach((fn) => fn(this));
   }
+}
+
+// ---------- source text -> blocks ----------
+//
+// The reverse of BlockProgram.toSource(). One statement per line, blocks are closed by "ende":
+//
+//   gehe <Richtung>                      wiederhole <Zahl> mal ... ende
+//   immer ... ende                       wenn <Bedingung> ... [sonst wenn ...] [sonst ...] ende
+//   funktion name(a, b) ... ende         ergebnis <Wert>
+//   # Kommentar                          name <Wert> <Wert> ...      (function call)
+//
+// Conditions: frei <Richtung>, besucht <Richtung>, nicht <…>, <…> und <…>, <…> oder <…>, name <Wert> …
+// "?" stands for an empty slot.
+
+const DIR_BY_KEY = new Map(DIRECTIONS.map((d) => [norm(d), d]));
+
+class SourceError extends Error {
+  constructor(message, line, column) {
+    super(line ? `Zeile ${line}: ${message}` : message);
+    this.name = 'SourceError';
+    this.errors = [{ source: 'code', message, line: line ?? null, column: column ?? null }];
+  }
+}
+
+/** Parses `source` into a list of block nodes. `create(type, props)` makes a fresh node. Throws SourceError. */
+function parseSource(source, create) {
+  const lines = String(source ?? '')
+    .split(/\r?\n/)
+    .map((raw, i) => {
+      const tokens = [];
+      for (const m of raw.matchAll(/\S+/g)) tokens.push({ text: m[0], col: m.index + 1 });
+      return { n: i + 1, raw, tokens };
+    });
+  let at = 0; // index of the line being read
+
+  const fail = (message, line, column) => {
+    throw new SourceError(message, line, column);
+  };
+  const make = (type, props) => create(type, props ?? {});
+  const skipBlank = () => {
+    while (at < lines.length && lines[at].tokens.length === 0) at++;
+  };
+
+  // ----- tokens of one line (or a part of it) -----
+
+  const cursor = (line, tokens) => ({ line, tokens, i: 0 });
+  const peek = (c) => c.tokens[c.i];
+  const peekIs = (c, word) => c.i < c.tokens.length && norm(c.tokens[c.i].text) === word;
+  const next = (c) => {
+    const t = c.tokens[c.i++];
+    if (!t) fail('Hier fehlt noch etwas', c.line.n, c.line.raw.length + 1);
+    return t;
+  };
+  const done = (c) => {
+    const t = peek(c);
+    if (t) fail(`„${t.text}“ gehört hier nicht hin`, c.line.n, t.col);
+  };
+
+  /** Puts `child` into a slot of `parent`, if the slot takes that kind of block. */
+  const attach = (parent, slotName, child, startToken, c) => {
+    if (child && !BLOCKS[parent.type].slots[slotName].accepts.includes(child.type)) {
+      fail(`„${startToken.text}“ passt hier nicht hin`, c.line.n, startToken.col);
+    }
+    parent.slots[slotName] = child;
+  };
+
+  // ----- values and conditions -----
+
+  /** A direction, a number or a parameter. "?" is an empty slot (null) or, in an argument list, a nameless parameter. */
+  const atom = (c, emptyIsNull) => {
+    const t = next(c);
+    const key = norm(t.text);
+    if (t.text === '?') return emptyIsNull ? null : make('param', { name: '' });
+    if (DIR_BY_KEY.has(key)) return make('dir', { value: DIR_BY_KEY.get(key) });
+    if (/^\d+$/.test(t.text)) return make('number', { value: Number(t.text) });
+    if (isName(t.text)) return make('param', { name: t.text });
+    return fail(`„${t.text}“ passt hier nicht hin`, c.line.n, t.col);
+  };
+
+  const primary = (c, params) => {
+    const t = next(c);
+    const key = norm(t.text);
+    if (t.text === '?') return null;
+
+    if (key === 'frei' || key === 'besucht') {
+      const node = make(key === 'frei' ? 'free' : 'visited');
+      const start = peek(c) ?? t;
+      attach(node, 'dir', atom(c, true), start, c);
+      return node;
+    }
+    if (DIR_BY_KEY.has(key)) return make('dir', { value: DIR_BY_KEY.get(key) });
+    if (/^\d+$/.test(t.text)) return make('number', { value: Number(t.text) });
+    if (isName(t.text)) {
+      // a parameter of the enclosing function, otherwise a call
+      if (params.some((p) => norm(p) === key)) return make('param', { name: t.text });
+      const call = make('call', { name: t.text });
+      while (c.i < c.tokens.length && !peekIs(c, 'und') && !peekIs(c, 'oder')) {
+        call.lists.args.push(atom(c, false));
+      }
+      return call;
+    }
+    return fail(`„${t.text}“ passt hier nicht hin`, c.line.n, t.col);
+  };
+
+  const parseNot = (c, params) => {
+    if (!peekIs(c, 'nicht')) return primary(c, params);
+    const t = next(c);
+    const node = make('not');
+    const start = peek(c) ?? t;
+    attach(node, 'a', parseNot(c, params), start, c);
+    return node;
+  };
+
+  /** Left-associative chain of `op` (and / oder) over the next tighter level. */
+  const binary = (c, params, op, type, sub) => {
+    const start = peek(c);
+    let left = sub(c, params);
+    while (peekIs(c, op)) {
+      const opToken = next(c);
+      const rightStart = peek(c) ?? opToken;
+      const right = sub(c, params);
+      const node = make(type);
+      attach(node, 'a', left, start, c);
+      attach(node, 'b', right, rightStart, c);
+      left = node;
+    }
+    return left;
+  };
+  const parseAnd = (c, params) => binary(c, params, 'und', 'and', parseNot);
+  const parseOr = (c, params) => binary(c, params, 'oder', 'or', parseAnd);
+
+  // ----- statements -----
+
+  /** Reads statements until a line that starts with one of `stops`; that line is left unread. */
+  const parseBody = (params, stops, opener) => {
+    const out = [];
+    for (;;) {
+      skipBlank();
+      if (at >= lines.length) {
+        if (!stops) return out;
+        return fail('Hier fehlt ein „ende“', opener.n, opener.tokens[0].col);
+      }
+      const line = lines[at];
+      if (stops?.includes(norm(line.tokens[0].text))) return out;
+      out.push(...parseStatement(line, params));
+    }
+  };
+
+  /** The "ende" that closes a block (the line is known to start with it). */
+  const readEnd = () => {
+    const line = lines[at];
+    if (line.tokens.length > 1) fail(`„${line.tokens[1].text}“ gehört hier nicht hin`, line.n, line.tokens[1].col);
+    at++;
+  };
+
+  /** A block with a body and a closing "ende". */
+  const parseBlock = (node, line, params) => {
+    at++;
+    node.lists.body = parseBody(params, ['ende'], line);
+    readEnd();
+    return node;
+  };
+
+  /** "wenn …" or "sonst wenn …" (header starts after `skip` tokens). Returns the "wenn" and an optional "sonst". */
+  const parseIf = (line, skip, params) => {
+    const rest = line.tokens.slice(skip);
+    if (rest.length === 0) {
+      const last = line.tokens[skip - 1];
+      fail('Nach „wenn“ fehlt die Bedingung', line.n, last.col + last.text.length);
+    }
+    const c = cursor(line, rest);
+    const cond = parseOr(c, params);
+    done(c);
+
+    const ifNode = make('if');
+    attach(ifNode, 'cond', cond, rest[0], c);
+    at++;
+    ifNode.lists.body = parseBody(params, ['sonst', 'ende'], line);
+
+    const stop = lines[at];
+    if (norm(stop.tokens[0].text) === 'ende') {
+      readEnd();
+      return [ifNode];
+    }
+
+    const elseNode = make('else');
+    if (stop.tokens[1] && norm(stop.tokens[1].text) === 'wenn') {
+      elseNode.lists.body = parseIf(stop, 2, params); // shares the one "ende"
+    } else {
+      if (stop.tokens.length > 1) fail(`„${stop.tokens[1].text}“ gehört hier nicht hin`, stop.n, stop.tokens[1].col);
+      parseBlock(elseNode, stop, params);
+    }
+    return [ifNode, elseNode];
+  };
+
+  const parseStatement = (line, params) => {
+    const toks = line.tokens;
+    const first = toks[0];
+    const key = norm(first.text);
+
+    if (first.text.startsWith('#')) {
+      let text = line.raw.trim().slice(1);
+      if (text.startsWith(' ')) text = text.slice(1);
+      at++;
+      return [make('comment', { text })];
+    }
+
+    switch (key) {
+      case 'gehe': {
+        const c = cursor(line, toks.slice(1));
+        const start = peek(c) ?? first;
+        const dir = atom(c, true);
+        done(c);
+        const node = make('go');
+        attach(node, 'dir', dir, start, c);
+        at++;
+        return [node];
+      }
+
+      case 'wiederhole': {
+        const last = toks[toks.length - 1];
+        if (toks.length < 2 || norm(last.text) !== 'mal') {
+          fail('„wiederhole“ braucht am Ende „mal“', line.n, last.col + last.text.length);
+        }
+        const c = cursor(line, toks.slice(1, -1));
+        const start = peek(c) ?? last;
+        const count = atom(c, true);
+        done(c);
+        const node = make('repeat');
+        attach(node, 'count', count, start, c);
+        return [parseBlock(node, line, params)];
+      }
+
+      case 'immer':
+        if (toks.length > 1) fail(`„${toks[1].text}“ gehört hier nicht hin`, line.n, toks[1].col);
+        return [parseBlock(make('forever'), line, params)];
+
+      case 'wenn':
+        return parseIf(line, 1, params);
+
+      case 'sonst':
+        // a "sonst" that no "wenn" took (validate() reports it)
+        if (toks[1] && norm(toks[1].text) === 'wenn') {
+          fail('„sonst wenn“ braucht ein „wenn“ direkt davor', line.n, first.col);
+        }
+        if (toks.length > 1) fail(`„${toks[1].text}“ gehört hier nicht hin`, line.n, toks[1].col);
+        return [parseBlock(make('else'), line, params)];
+
+      case 'funktion': {
+        const m = /^\s*\S+\s+([^\s(]+)\s*(?:\(([^)]*)\))?\s*$/.exec(line.raw);
+        if (!m) fail('Nach „funktion“ erwarte ich Name(Parameter)', line.n, first.col + first.text.length);
+        const ownParams = (m[2] ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+        const node = make('funcDef', { name: m[1] === '?' ? '' : m[1], params: ownParams });
+        return [parseBlock(node, line, [...params, ...ownParams])];
+      }
+
+      case 'ergebnis': {
+        if (toks.length < 2) fail('Nach „ergebnis“ fehlt der Wert', line.n, first.col + first.text.length);
+        const c = cursor(line, toks.slice(1));
+        const value = parseOr(c, params);
+        done(c);
+        const node = make('return');
+        attach(node, 'value', value, toks[1], c);
+        at++;
+        return [node];
+      }
+
+      case 'ende':
+        return fail('Dieses „ende“ hat keinen Block, den es abschließt', line.n, first.col);
+
+      default: {
+        // a call used as a statement: name value value …
+        if (first.text !== '?' && !isName(first.text)) {
+          return fail(`Eine Zeile kann nicht mit „${first.text}“ beginnen`, line.n, first.col);
+        }
+        const call = make('call', { name: first.text === '?' ? '' : first.text });
+        const c = cursor(line, toks.slice(1));
+        while (c.i < c.tokens.length) call.lists.args.push(atom(c, false));
+        at++;
+        return [call];
+      }
+    }
+  };
+
+  return parseBody([], null, null);
 }
