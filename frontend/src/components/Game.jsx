@@ -74,6 +74,7 @@ export default function Game() {
     const [inputResetKey, setInputResetKey] = useState(0);
     const [, rerender] = useReducer((n) => n + 1, 0);
     const [player, setPlayer] = useState(null); // { sessionId, playerId, publicId, displayName }
+    const [savedCode, setSavedCode] = useState(null);
     const [loginOpen, setLoginOpen] = useState(false);
     const [view, setView] = useState("maze"); // "maze" | "code"
     const [fast, setFast] = useState(false); // "Schnell": no pacing of the moves
@@ -253,6 +254,7 @@ export default function Game() {
     function logout() {
         if (active) cancelRun();
         setPlayer(null);
+        setSavedCode(null);
     }
 
     /** Back to the start of the same maze, keeping the user's code. */
@@ -269,10 +271,10 @@ export default function Game() {
         setView("code");
     }
 
-    /** Full restart: also clears the editor. */
     function restart() {
         resetMaze();
         programErrorsRef.current = [];
+        setSavedCode(null);
         setInputResetKey((key) => key + 1);
         setView("code");
     }
@@ -417,6 +419,7 @@ export default function Game() {
                             <GameInput
                                 key={inputResetKey}
                                 ref={inputRef}
+                                code={savedCode}
                                 status={status}
                                 onProgramChange={({ errors }) => {
                                     programErrorsRef.current = errors;
@@ -477,7 +480,10 @@ export default function Game() {
                 open={loginOpen}
                 onClose={(result) => {
                     setLoginOpen(false);
-                    if (result) setPlayer(result);
+                    if (result) {
+                        setPlayer(result);
+                        setSavedCode(result.dslProgram ?? null);
+                    }
                 }}
             />
         </main>

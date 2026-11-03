@@ -108,7 +108,16 @@ export class CodeMazeApi {
     return this.#request("POST", "/api/players/confirm", { displayName, code });
   }
 
-  /** POST /api/players/verify. Returns a new session. */
+  /**
+   * POST /api/players/verify. Returns a new session.
+   * @returns {Promise<{
+   *   sessionId: string,
+   *   playerId: number,
+   *   publicId: string,
+   *   displayName: string,
+   *   dslProgram: string|null   // latest saved program, null if the player has no scores
+   * }>}
+   */
   verifyPlayer(displayName, code) {
     return this.#request("POST", "/api/players/verify", { displayName, code });
   }

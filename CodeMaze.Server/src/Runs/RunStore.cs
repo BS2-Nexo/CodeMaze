@@ -11,11 +11,12 @@ public sealed record PendingRun(
     Maze Maze,
     TimeSpan StepDelay,
     DateTimeOffset CreatedAt,
-    Guid SessionId);
+    Guid SessionId,
+    string SourceCode);
 
 public interface IRunStore
 {
-    PendingRun Add(ILProgram program, Maze maze, TimeSpan stepDelay, Guid SessionId);
+    PendingRun Add(ILProgram program, Maze maze, TimeSpan stepDelay, Guid SessionId, string SourceCode);
 
     /// <summary>Removes and returns the run, so a run can only be started once.</summary>
     bool TryTake(Guid id, out PendingRun run);
@@ -31,11 +32,11 @@ public sealed class InMemoryRunStore : IRunStore
 
     private readonly ConcurrentDictionary<Guid, PendingRun> _runs = new();
 
-    public PendingRun Add(ILProgram program, Maze maze, TimeSpan stepDelay, Guid SessionId)
+    public PendingRun Add(ILProgram program, Maze maze, TimeSpan stepDelay, Guid SessionId, string SourceCode)
     {
         Purge();
 
-        var run = new PendingRun(Guid.NewGuid(), program, maze, stepDelay, DateTimeOffset.UtcNow, SessionId);
+        var run = new PendingRun(Guid.NewGuid(), program, maze, stepDelay, DateTimeOffset.UtcNow, SessionId, SourceCode);
         _runs[run.Id] = run;
         return run;
     }

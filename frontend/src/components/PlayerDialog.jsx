@@ -133,6 +133,7 @@ export default function PlayerDialog({ api, open, onClose }) {
                     playerId: reserved.id,
                     publicId: reserved.publicId,
                     displayName: reserved.displayName,
+                    dslProgram: null, // new player, nothing saved yet
                 });
             } else {
                 const res = await api.verifyPlayer(name, typed);
@@ -141,8 +142,10 @@ export default function PlayerDialog({ api, open, onClose }) {
                     playerId: res.playerId,
                     publicId: res.publicId,
                     displayName: res.displayName,
+                    dslProgram: res.dslProgram ?? null,
                 });
             }
+
         } catch (e) {
             handleFailure(e);
         } finally {

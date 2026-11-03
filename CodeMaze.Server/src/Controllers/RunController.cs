@@ -132,7 +132,7 @@ public class RunsController : ControllerBase
         }
 
         var delayMs = Math.Clamp(request.StepDelayMs ?? ApiLimits.DefaultStepDelayMs, ApiLimits.MinStepDelayMs, ApiLimits.MaxStepDelayMs);
-        var run = _runs.Add(compiled.Il, maze, TimeSpan.FromMilliseconds(delayMs), request.SessionId);
+        var run = _runs.Add(compiled.Il, maze, TimeSpan.FromMilliseconds(delayMs), request.SessionId, request.Code);
 
         return Ok(new CreateRunResponse(run.Id, $"/api/runs/{run.Id}/ws", maze));
     }
