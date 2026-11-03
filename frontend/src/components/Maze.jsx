@@ -39,6 +39,26 @@ function loadImage(src, onLoad) {
     return img;
 }
 
+/**
+ * Returns a copy of `img` recoloured with `tint`: hue and saturation come from the tint, brightness
+ * from the sprite, so the result stays vivid while outlines and shading are kept. Transparent pixels
+ * stay transparent. Returns null for an invalid color.
+ */
+function makeTinted(img, tint) {
+    if (typeof CSS !== "undefined" && !CSS.supports("color", tint)) return null;
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext("2d");
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = "color"; // recolour the sprite...
+    g.fillStyle = tint;
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = "destination-in"; // ...then cut it back to the original shape
+    g.drawImage(img, 0, 0);
+    return c;
+}
+
 /** Is the tile (tx, ty) a wall? */
 function isWall(model, tx, ty, W, H) {
     const evenX = tx % 2 === 0;
@@ -87,6 +107,8 @@ class MazeView {
         this.ctx = canvas.getContext("2d");
         this.onChange = onChange; // called with { follow, fit } when the view mode changes
         this.transitionMs = 100;
+        this.tint = null; // CSS color or null = original sprites
+        this.tinted = { stand: null, walk: null }; // lazily built tinted copies
 
         this.model = null;
         this.walls = null;
@@ -296,6 +318,25 @@ class MazeView {
         this.request();
     }
 
+    /* ---- player appearance ---- */
+
+    /** Sets the colour tint for the player sprites (any CSS colour), or null for the original look. */
+    setTint(tint) {
+        const next = tint || null;
+        if (next === this.tint) return;
+        this.tint = next;
+        this.tinted = { stand: null, walk: null }; // rebuilt on the next frame
+        this.request();
+    }
+
+    /** The player sprite to draw: tinted if a tint is set and the image is loaded, else the original. */
+    playerSprite(key) {
+        const img = this.img[key];
+        if (!this.tint || !(img.complete && img.naturalWidth > 0)) return img;
+        if (!this.tinted[key]) this.tinted[key] = makeTinted(img, this.tint) ?? img;
+        return this.tinted[key];
+    }
+
     /* ---- batching ---- */
 
     /** Takes a snapshot of the model's current state and makes it the shown one. */
@@ -374,9 +415,11 @@ class MazeView {
         return { x: a.fromX + (a.toX - a.fromX) * t, y: a.fromY + (a.toY - a.fromY) * t };
     }
 
+    /** Draws an image or a (tinted) canvas, or a plain coloured square while an image is still loading. */
     sprite(img, fallback, x, y, size) {
         const ctx = this.ctx;
-        if (img.complete && img.naturalWidth > 0) {
+        const ready = img instanceof HTMLCanvasElement || (img.complete && img.naturalWidth > 0);
+        if (ready) {
             ctx.drawImage(img, x, y, size, size);
         } else {
             ctx.fillStyle = fallback;
@@ -467,7 +510,7 @@ class MazeView {
 
         // exit and player
         this.sprite(this.img.exit, "#ffb900", (2 * m.exit.x + 1) * td + ox, (2 * m.exit.y + 1) * td + oy, td);
-        const body = s.steps % 2 === 1 ? this.img.walk : this.img.stand;
+        const body = this.playerSprite(s.steps % 2 === 1 ? "walk" : "stand");
         this.sprite(body, "#35B23A", Math.round(p.x * td) + ox, Math.round(p.y * td) + oy, td);
 
         if (moving || camMoving) this.request();
@@ -485,9 +528,11 @@ const toolButton =
  * @param transitionMs  how long the player sprite takes to slide to the next cell
  * @param fast          true while the "Schnell" mode (no pacing of the moves) is on
  * @param onToggleFast  called when the "Schnell" button is pressed; the button is hidden without it
+ * @param playerTint    optional CSS color (e.g. "#ff4444", "hsl(200 80% 60%)") applied to the player
+ *                      sprites; none by default (original sprites, no tint)
  * @param className     sizing classes for the outer element
  */
-export function Maze({ model, transitionMs = 100, fast = false, onToggleFast, className = "" }) {
+export function Maze({ model, transitionMs = 100, fast = false, onToggleFast, playerTint = null, className = "" }) {
     const boxRef = useRef(null);
     const canvasRef = useRef(null);
     const viewRef = useRef(null);
@@ -507,6 +552,10 @@ export function Maze({ model, transitionMs = 100, fast = false, onToggleFast, cl
             viewRef.current = null;
         };
     }, []);
+
+    useEffect(() => {
+        viewRef.current?.setTint(playerTint);
+    }, [playerTint]);
 
     useEffect(() => {
         viewRef.current?.setModel(model);

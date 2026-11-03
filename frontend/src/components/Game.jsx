@@ -77,6 +77,7 @@ export default function Game() {
     const [loginOpen, setLoginOpen] = useState(false);
     const [view, setView] = useState("maze"); // "maze" | "code"
     const [fast, setFast] = useState(false); // "Schnell": no pacing of the moves
+    const [playerTint, setPlayerTint] = useState(null); // CSS colour chosen in the menu; null = default figure
 
     // gauntlet
     const [capabilities, setCapabilities] = useState(null); // GET /api/capabilities
@@ -405,6 +406,7 @@ export default function Game() {
                             transitionMs={fast ? 0 : Math.min(gauntlet ? GAUNTLET_DELAY_MS : STEP_DELAY_MS, 150)}
                             fast={fast}
                             onToggleFast={toggleFast}
+                            playerTint={playerTint}
                             className={`absolute inset-0 h-full w-full ${view === "maze" ? "" : "invisible"}`}
                         />
 
@@ -440,6 +442,8 @@ export default function Game() {
                                 onLogout={logout}
                                 onStart={startRun}
                                 onCancel={cancelRun}
+                                playerTint={playerTint}
+                                onPlayerTintChange={setPlayerTint}
                             />
                         </div>
                     </div>

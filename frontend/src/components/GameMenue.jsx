@@ -1,10 +1,56 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Leaderboard from "./Leaderboard.jsx";
 
 // All values are in cqw = percent of the menu width.
 const PAD_TOP = 8; // space between the top of the frame and the title
 const SIDE = 16; // left and right margin, so content stays inside the frame
 const BOTTOM = 14; // bottom margin
+
+// The player figures offered in the menu. `tint: null` is the original (flesh coloured) sprite.
+// The tint is a CSS colour whose hue and saturation are applied to the sprite (its brightness and
+// outlines are kept), exactly as the maze does it.
+export const PLAYER_TINTS = [
+  { label: "Standard", tint: null },
+  { label: "Rot", tint: "#ff1f1f" },
+  { label: "Blau", tint: "#1f5cff" },
+  { label: "Grün", tint: "#14e03c" },
+  { label: "Gelb", tint: "#ffe500" },
+];
+
+const PLAYER_SPRITE = "/assets/Player_stand.png";
+
+/** Player_stand.png with a tint applied (same technique as in Maze.jsx). */
+function TintedSprite({ tint, className = "" }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (cancelled || !canvas) return;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const g = canvas.getContext("2d");
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(img, 0, 0);
+      if (tint) {
+        g.globalCompositeOperation = "color"; // take hue + saturation from the tint, brightness from the sprite...
+        g.fillStyle = tint;
+        g.fillRect(0, 0, canvas.width, canvas.height);
+        g.globalCompositeOperation = "destination-in"; // ...then cut it back to the original shape
+        g.drawImage(img, 0, 0);
+        g.globalCompositeOperation = "source-over";
+      }
+    };
+    img.src = PLAYER_SPRITE;
+    return () => {
+      cancelled = true;
+    };
+  }, [tint]);
+
+  return <canvas ref={canvasRef} aria-hidden="true" className={`block [image-rendering:pixelated] ${className}`} />;
+}
 
 export default function GameMenue({
   api,
@@ -18,6 +64,8 @@ export default function GameMenue({
   onLogout,
   onStart,
   onCancel,
+  playerTint = null, // currently selected tint (CSS colour) or null = default figure
+  onPlayerTintChange, // called with the new tint (or null); the picker is hidden without it
 }) {
   const [tab, setTab] = useState("game"); // "game" | "leaderboard"
 
@@ -81,6 +129,29 @@ export default function GameMenue({
               <button type="button" onClick={() => onViewChange("code")} className={viewClass("code")}>
                 &gt; Code
               </button>
+
+              {/* player figure: the sprite in the available tints, always visible */}
+              {onPlayerTintChange && (
+                <div role="group" aria-label="Spielfigur" className="flex flex-wrap gap-[1.5cqw] pt-[2cqw]">
+                  {PLAYER_TINTS.map(({ label, tint }) => {
+                    const selected = tint === playerTint;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={selected}
+                        onClick={() => onPlayerTintChange(tint)}
+                        className={`border-2 bg-black/70 p-[0.8cqw] hover:border-[#ffb900] focus-visible:outline-2 focus-visible:outline-white ${selected ? "border-[#ffb900]" : "border-white/40"
+                          }`}
+                      >
+                        <TintedSprite tint={tint} className="h-[9cqw] w-[9cqw]" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="pt-[2cqw]" />
 
