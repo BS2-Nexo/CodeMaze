@@ -142,7 +142,7 @@ export default function GameMenue({
           src="/assets/Title.png"
           alt="Title"
           draggable={false}
-          className="pointer-events-none mx-auto block h-auto w-full shrink-0 select-none"
+          className="pointer-events-none mx-auto block h-auto w-[70%] shrink-0 select-none"
         />
 
         <button
