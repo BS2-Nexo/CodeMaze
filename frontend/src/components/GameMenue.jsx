@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Leaderboard from "./Leaderboard.jsx";
+import HelpModal from "./HelpModal.jsx";
 
 // All values are in cqw = percent of the menu width.
 const PAD_TOP = 8; // space between the top of the frame and the title
@@ -109,6 +110,7 @@ export default function GameMenue({
   onPlayerTintChange, // called with the new tint (or null); the picker is hidden without it
 }) {
   const [tab, setTab] = useState("game"); // "game" | "leaderboard"
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const tabClass = (name) =>
     `flex-1 border-b-2 py-[1.5cqw] text-center font-black uppercase tracking-[0.15em] ${tab === name ? "border-[#ffb900] text-[#ffb900]" : "border-transparent hover:text-[#ffb900]"
@@ -142,6 +144,17 @@ export default function GameMenue({
           draggable={false}
           className="pointer-events-none mx-auto block h-auto w-full shrink-0 select-none"
         />
+
+        <button
+          type="button"
+          onClick={() => setHelpOpen(true)}
+          aria-label="open help"
+          title="Help"
+          className={`absolute right-[2cqw] top-[2cqw] z-10 flex aspect-square w-[8cqw] items-center justify-center border-[3px] ${RED} bg-black/70 font-black uppercase text-white ${AMBER_HOVER} enabled:hover:text-[#ffb900] focus-visible:outline-2 focus-visible:outline-white`}
+        >
+          <InnerLine inset="0.8cqw" />
+          i
+        </button>
 
         <p className="mt-[2cqw] shrink-0 break-all text-center font-black normal-case text-[#ffb900]">
           {loggedIn ? `${player.displayName} ${player.publicId}` : "Nicht angemeldet"}
@@ -220,6 +233,7 @@ export default function GameMenue({
           )}
         </div>
       </div>
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
     </aside>
   );
 }
