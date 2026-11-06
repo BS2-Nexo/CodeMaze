@@ -5,6 +5,7 @@
   <Project Path="CodeMaze.MazeGeneration.Algorithms/test/CodeMaze.MazeGeneration.Algorithms.Tests.csproj" />
   <Project Path="CodeMaze.MazeLang.Ast/src/CodeMaze.MazeLang.Ast.csproj" />
   <Project Path="CodeMaze.MazeLang.Compiler/src/CodeMaze.MazeLang.Compiler.csproj" />
+  <Project Path="CodeMaze.MazeLang.Compiler/test/CodeMaze.MazeLang.Compiler.Tests.csproj" />
   <Project Path="CodeMaze.MazeLang.Compiler.AST/src/CodeMaze.MazeLang.Compiler.AST.csproj" />
   <Project Path="CodeMaze.MazeLang.Core/src/Codemaze.MazeLang.Core.csproj" />
   <Project Path="CodeMaze.MazeLang.IL/src/CodeMaze.MazeLang.IL.csproj" />
