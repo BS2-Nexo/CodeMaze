@@ -3,7 +3,7 @@ import Leaderboard from "./Leaderboard.jsx";
 import HelpModal from "./HelpModal.jsx";
 
 // All values are in cqw = percent of the menu width.
-const PAD_TOP = 8; // space between the top of the frame and the title
+const PAD_TOP = 13; // space between the top of the frame and the title (the frame's border is ~8 thick)
 const SIDE = 16; // left and right margin, so content stays inside the frame
 const BOTTOM = 14; // bottom margin
 
@@ -155,12 +155,14 @@ export default function GameMenue({
                     className="pointer-events-none mx-auto block h-auto w-[70%] shrink-0 select-none"
                 />
 
+                {/* help button: inside the content area, clear of the frame's border */}
                 <button
                     type="button"
                     onClick={() => setHelpOpen(true)}
                     aria-label="open help"
                     title="Help"
-                    className={`absolute right-[2cqw] top-[2cqw] z-10 flex aspect-square w-[8cqw] items-center justify-center border-[3px] ${RED} bg-black/70 font-black uppercase text-white ${AMBER_HOVER} enabled:hover:text-[#ffb900] focus-visible:outline-2 focus-visible:outline-white`}
+                    style={{ top: `${PAD_TOP}cqw`, right: `${SIDE}cqw` }}
+                    className={`absolute z-10 flex aspect-square w-[8cqw] items-center justify-center border-[3px] ${RED} bg-black/70 font-black uppercase text-white ${AMBER_HOVER} enabled:hover:text-[#ffb900] focus-visible:outline-2 focus-visible:outline-white`}
                 >
                     <InnerLine inset="0.8cqw" />
                     i
