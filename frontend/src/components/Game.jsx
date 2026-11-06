@@ -12,8 +12,13 @@ import { buildGauntlet, difficultyLabel, outcomeLabel } from "../api/gauntlet.js
 
 const api = new CodeMazeApi(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080");
 
-const MAZE_SIZE = 10;
-const DIFFICULTY = "easy";
+// The start mazes the user can choose in the menu (size and difficulty as understood by the server).
+const LEVELS = {
+    easy: { size: 10, difficulty: "easy" },
+    medium: { size: 30, difficulty: "medium" },
+    hard: { size: 50, difficulty: "hard" },
+};
+const DEFAULT_LEVEL = "easy";
 const LANGUAGE = "de"; // the block editor writes German keywords
 const STEP_DELAY_MS = 120; // client-side pacing of the moves in a normal run (the server is asked not to wait)
 const GAUNTLET_DELAY_MS = 30; // pacing of the moves during the gauntlet
@@ -79,10 +84,11 @@ export default function Game() {
     const [view, setView] = useState("maze"); // "maze" | "code"
     const [fast, setFast] = useState(false); // "Schnell": no pacing of the moves
     const [playerTint, setPlayerTint] = useState(null); // CSS colour chosen in the menu; null = default figure
+    const [level, setLevel] = useState(DEFAULT_LEVEL); // "easy" | "medium" | "hard": the start maze chosen in the menu
 
     // gauntlet
     const [capabilities, setCapabilities] = useState(null); // GET /api/capabilities
-    const [offerGauntlet, setOfferGauntlet] = useState(true); // only offered on the first completion
+    const [offerGauntlet, setOfferGauntlet] = useState(true); // re-armed by every installRun; "Beenden" turns it off for the current solved maze
     const [gauntlet, setGauntlet] = useState(null); // null | { phase, progress?, result? }
 
     const runRef = useRef(null);
@@ -94,6 +100,7 @@ export default function Game() {
     const fastRef = useRef(false);
     const paceRef = useRef(STEP_DELAY_MS); // pacing of the current run when not in fast mode
     const pumpRef = useRef(null);
+    const levelRequestRef = useRef(0); // only the latest difficulty selection may install its maze
 
     function toggleFast() {
         fastRef.current = !fastRef.current;
@@ -129,6 +136,7 @@ export default function Game() {
         setRun(next);
         setActive(false);
         setDismissed(false);
+        setOfferGauntlet(true); // a new run may offer the gauntlet again when it is solved
         return next;
     }
 
@@ -136,7 +144,7 @@ export default function Game() {
     useEffect(() => {
         let cancelled = false;
         api
-            .generateMaze(MAZE_SIZE, DIFFICULTY)
+            .generateMaze(LEVELS[DEFAULT_LEVEL].size, LEVELS[DEFAULT_LEVEL].difficulty)
             .then((maze) => {
                 if (cancelled) return;
                 setRawMaze(maze);
@@ -257,10 +265,14 @@ export default function Game() {
         resetMaze();
     }
 
+    /** Logs out and wipes the editor: this is the only place where the user's code is cleared. */
     function logout() {
         if (active) cancelRun();
         setPlayer(null);
         setSavedCode(null);
+        programErrorsRef.current = [];
+        setInputResetKey((key) => key + 1); // remount GameInput -> clears blocks and text
+        setView("code");
     }
 
     /** Back to the start of the same maze, keeping the user's code. */
@@ -269,20 +281,44 @@ export default function Game() {
         setView("code");
     }
 
-    async function nextLevel() {
-        const maze = await api.generateMaze(MAZE_SIZE, DIFFICULTY);
-        setRawMaze(maze);
-        installRun(maze);
-        setError(null);
-        setView("code");
+    /** Fetches a fresh maze for the selected level. */
+    function generateLevelMaze(key = level) {
+        const { size, difficulty } = LEVELS[key];
+        return api.generateMaze(size, difficulty);
     }
 
-    function restart() {
-        resetMaze();
-        programErrorsRef.current = [];
-        setSavedCode(null);
-        setInputResetKey((key) => key + 1);
-        setView("code");
+    /** The user picked a difficulty in the menu: request a new maze with these specs and show it. */
+    async function selectLevel(key) {
+        if (key === level || !LEVELS[key] || active || busy || gauntlet) return;
+
+        const previous = level;
+        const request = ++levelRequestRef.current;
+        setLevel(key);
+        setError(null);
+        try {
+            const maze = await generateLevelMaze(key);
+            if (request !== levelRequestRef.current) return; // a newer selection took over
+            setRawMaze(maze);
+            installRun(maze);
+            setView("maze");
+        } catch (e) {
+            if (request !== levelRequestRef.current) return;
+            setError(e.message);
+            setLevel(previous); // the maze on screen is still the old one
+        }
+    }
+
+    /** "Nächstes Level": a new maze of the selected difficulty, the user's code stays. */
+    async function nextLevel() {
+        try {
+            const maze = await generateLevelMaze();
+            setRawMaze(maze);
+            installRun(maze); // new run: the level-complete modal goes away
+            setError(null);
+            setView("code");
+        } catch (e) {
+            setError(e.message); // the modal stays open so the user can try again
+        }
     }
 
     function closeModal() {
@@ -374,13 +410,12 @@ export default function Game() {
         connRef.current?.cancel();
     }
 
-    /** After the gauntlet: back to an easy MAZE_SIZE x MAZE_SIZE maze, the user's code stays. */
+    /** After the gauntlet: back to a maze of the selected level, the user's code stays. */
     async function closeGauntlet() {
-        setOfferGauntlet(false);
         try {
-            const maze = await api.generateMaze(MAZE_SIZE, DIFFICULTY);
+            const maze = await generateLevelMaze();
             setRawMaze(maze);
-            installRun(maze);
+            installRun(maze); // also re-arms the gauntlet offer for the next solved maze
         } catch (e) {
             setError(e.message);
             if (rawMaze) installRun(rawMaze);
@@ -402,6 +437,7 @@ export default function Game() {
     const moves = model?.steps ?? 0;
 
     const showGauntletOffer = status === "level complete" && offerGauntlet && !!capabilities;
+    const gauntletRunning = gauntlet?.phase === "running";
 
     return (
         <main className="min-h-dvh bg-black bg-[url('/assets/Background.png')] bg-center bg-contain font-[Silkscreen,monospace] text-white p-3 md:p-6">
@@ -435,22 +471,23 @@ export default function Game() {
                     </div>
 
                     {/* the column is as tall as the maze box; on lg the menu is laid over it */}
-                    <div
-                        className={`relative min-w-0 ${gauntlet?.phase === "running" ? "pointer-events-none opacity-60" : ""}`}
-                    >
+                    <div className="relative min-w-0">
                         <div className="lg:absolute lg:inset-0">
                             <GameMenue
                                 api={api}
                                 active={active}
                                 busy={busy}
                                 canStart={!!rawMaze}
+                                locked={gauntletRunning}
+                                level={level}
+                                onLevelChange={selectLevel}
                                 player={player}
                                 view={view}
                                 onViewChange={setView}
                                 onLogin={() => setLoginOpen(true)}
                                 onLogout={logout}
                                 onStart={startRun}
-                                onCancel={cancelRun}
+                                onCancel={gauntletRunning ? cancelGauntlet : cancelRun}
                                 playerTint={playerTint}
                                 onPlayerTintChange={setPlayerTint}
                             />
@@ -459,7 +496,7 @@ export default function Game() {
                 </div>
             </div>
 
-            {status === "game over" && <GameOverModal moves={moves} restart={restart} onClose={closeModal} />}
+            {status === "game over" && <GameOverModal moves={moves} restart={retry} onClose={closeModal} />}
 
             {(gauntlet || showGauntletOffer) && (
                 <GauntletModal
@@ -476,7 +513,7 @@ export default function Game() {
             )}
 
             {status === "level complete" && !showGauntletOffer && (
-                <LevelCompleteModal moves={moves} restart={retry} onClose={closeModal} />
+                <LevelCompleteModal moves={moves} onNext={nextLevel} onClose={closeModal} />
             )}
 
             <PlayerDialog
