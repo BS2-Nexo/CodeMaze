@@ -119,6 +119,16 @@ public class PlayerAuthService(
         return new(VerifyResult.WrongCode, LockedUntil: player.LockedUntil);
     }
 
+    /// <summary>Returns the DSL program of the player's most recent score, or null if they have none.</summary>
+    public async Task<string?> GetLatestProgramAsync(int playerId, CancellationToken ct = default) =>
+        await db.Scores
+            .AsNoTracking()
+            .Where(s => s.PlayerId == playerId)
+            .OrderByDescending(s => s.CreatedAt)
+            .ThenByDescending(s => s.Id) // tie-breaker if two scores share a timestamp
+            .Select(s => s.DSLProgram)
+            .FirstOrDefaultAsync(ct);
+
     /// <summary>Admin: issue a fresh code (lost-code flow after the person proved who they are).</summary>
     public async Task<string?> ReissueAsync(int playerId, CancellationToken ct = default)
     {

@@ -9,8 +9,8 @@ namespace CodeMaze.MazeLang.Compiler.AST;
 /// <summary>
 /// Translates an AST into IL. Along the way it checks everything the interpreter
 /// should not have to check: unknown functions/parameters, argument count, Back in
-/// the wrong place, action functions used in conditions, and more. All errors are
-/// collected and reported as a <see cref="CompileException"/>.
+/// the wrong place, direction/number mix-ups, action functions used in conditions,
+/// and more. All errors are collected and reported as a <see cref="CompileException"/>.
 /// </summary>
 public static class AstCompiler
 {
@@ -21,7 +21,14 @@ public static class AstCompiler
     }
 }
 
-internal sealed record FunctionInfo(FunctionDecl Decl, int Index, bool ReturnsValue);
+/// <summary>What a parameter holds. Inferred from how the parameter is used.</summary>
+internal enum ValueKind { Unknown, Direction, Number }
+
+internal sealed record FunctionInfo(FunctionDecl Decl, int Index, bool ReturnsValue)
+{
+    /// <summary>Inferred kind per parameter; Unknown = never used in a way that decides it.</summary>
+    public ValueKind[] ParamKinds { get; } = new ValueKind[Decl.Parameters.Count];
+}
 
 internal sealed class Compilation
 {
@@ -61,18 +68,117 @@ internal sealed class Compilation
             _ordered.Add(info);
         }
 
+        // Phase 1.5: infer parameter kinds (direction / number) from their uses.
+        InferParameterKinds();
+
         // Phase 2: generate code.
         var functions = new List<ILFunction>
         {
-            new FunctionCompiler(this, EntryName, [], _program.Body, isEntry: true).Compile()
+            new FunctionCompiler(this, EntryName, [], [], _program.Body, isEntry: true).Compile()
         };
         foreach (var info in _ordered)
-            functions.Add(new FunctionCompiler(this, info.Decl.Name, info.Decl.Parameters, info.Decl.Body,
-                isEntry: false).Compile());
+            functions.Add(new FunctionCompiler(this, info.Decl.Name, info.Decl.Parameters, info.ParamKinds,
+                info.Decl.Body, isEntry: false).Compile());
 
         if (_diagnostics.Count > 0)
             throw new CompileException(_diagnostics);
         return new ILProgram(functions, EntryPoint: 0);
+    }
+
+    // ------------------------------------------------ parameter kind inference
+
+    /// <summary>
+    /// The first use that decides a parameter's kind wins. Kinds propagate through calls in both
+    /// directions until nothing changes. Conflicting uses are reported later, during emission.
+    /// </summary>
+    private void InferParameterKinds()
+    {
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (var info in _ordered)
+                changed |= InferBlock(info, info.Decl.Body);
+        } while (changed);
+    }
+
+    private bool InferBlock(FunctionInfo f, IReadOnlyList<Stmt> block)
+    {
+        bool changed = false;
+        foreach (var s in block)
+            changed |= InferStmt(f, s);
+        return changed;
+    }
+
+    private bool InferStmt(FunctionInfo f, Stmt s) => s switch
+    {
+        Move m => Constrain(f, m.Direction, ValueKind.Direction),
+        CallStmt c => InferCall(f, c.Function, c.Arguments),
+        Repeat r => Constrain(f, r.Count, ValueKind.Number) | InferBlock(f, r.Body),
+        Forever fv => InferBlock(f, fv.Body),
+        If i => InferExpr(f, i.Condition) | InferBlock(f, i.Then) | InferBlock(f, i.Else),
+        Return { Value: { } v } => InferExpr(f, v),
+        _ => false,
+    };
+
+    private bool InferExpr(FunctionInfo f, Expr e) => e switch
+    {
+        Not n => InferExpr(f, n.Operand),
+        And a => InferExpr(f, a.Left) | InferExpr(f, a.Right),
+        Or o => InferExpr(f, o.Left) | InferExpr(f, o.Right),
+        Sense s => Constrain(f, s.Direction, ValueKind.Direction),
+        CallExpr c => InferCall(f, c.Function, c.Arguments),
+        _ => false,
+    };
+
+    private bool InferCall(FunctionInfo f, string name, IReadOnlyList<ValueExpr> args)
+    {
+        if (!_byName.TryGetValue(name, out var callee)) return false;
+        bool changed = false;
+        int n = Math.Min(args.Count, callee.ParamKinds.Length);
+        for (int i = 0; i < n; i++)
+        {
+            var argKind = KindOf(f, args[i]);
+            if (argKind == ValueKind.Unknown)
+            {
+                changed |= Constrain(f, args[i], callee.ParamKinds[i]);      // callee -> caller
+            }
+            else if (callee.ParamKinds[i] == ValueKind.Unknown)
+            {
+                callee.ParamKinds[i] = argKind;                              // caller -> callee
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private static ValueKind KindOf(FunctionInfo f, ValueExpr v)
+    {
+        switch (v)
+        {
+            case DirectionLiteral: return ValueKind.Direction;
+            case NumberLiteral: return ValueKind.Number;
+            case ParameterRef p:
+                int idx = ParamIndex(f, p.Name);
+                return idx >= 0 ? f.ParamKinds[idx] : ValueKind.Unknown;
+            default: return ValueKind.Unknown;
+        }
+    }
+
+    private static bool Constrain(FunctionInfo f, ValueExpr v, ValueKind kind)
+    {
+        if (kind == ValueKind.Unknown || v is not ParameterRef p) return false;
+        int i = ParamIndex(f, p.Name);
+        if (i < 0 || f.ParamKinds[i] != ValueKind.Unknown) return false;
+        f.ParamKinds[i] = kind;
+        return true;
+    }
+
+    private static int ParamIndex(FunctionInfo f, string name)
+    {
+        for (int i = 0; i < f.Decl.Parameters.Count; i++)
+            if (f.Decl.Parameters[i] == name) return i;   // first one wins, like _slots
+        return -1;
     }
 
     /// <summary>Which kinds of Return occur in the body?</summary>
@@ -106,6 +212,7 @@ internal sealed class FunctionCompiler
 {
     private readonly Compilation _owner;
     private readonly string _name;
+    private readonly ValueKind[] _kinds;
     private readonly IReadOnlyList<Stmt> _body;
     private readonly bool _isEntry;
     private readonly int _parameterCount;
@@ -114,10 +221,11 @@ internal sealed class FunctionCompiler
     private int _nextLocal;
 
     public FunctionCompiler(Compilation owner, string name, IReadOnlyList<string> parameters,
-        IReadOnlyList<Stmt> body, bool isEntry)
+        ValueKind[] kinds, IReadOnlyList<Stmt> body, bool isEntry)
     {
         _owner = owner;
         _name = name;
+        _kinds = kinds;
         _body = body;
         _isEntry = isEntry;
         _parameterCount = parameters.Count;
@@ -149,7 +257,7 @@ internal sealed class FunctionCompiler
         switch (stmt)
         {
             case Move m:
-                EmitDirection(m.Direction, allowBack: true);
+                EmitValue(m.Direction, ValueKind.Direction, allowBack: true);
                 _b.Emit(OpCode.Move);
                 break;
 
@@ -160,12 +268,10 @@ internal sealed class FunctionCompiler
 
             case Repeat rep:
                 {
-                    if (rep.Count < 0)
-                        _owner.Error("The repeat count must not be negative.", rep.Location);
                     int counter = _nextLocal++;        // separate slot per loop
                     var start = _b.NewLabel();
                     var end = _b.NewLabel();
-                    _b.Emit(OpCode.PushInt, rep.Count);
+                    EmitValue(rep.Count, ValueKind.Number, allowBack: false);   // literal or parameter
                     _b.Emit(OpCode.StoreLocal, counter);
                     _b.Mark(start);
                     _b.Emit(OpCode.LoadLocal, counter);
@@ -272,7 +378,7 @@ internal sealed class FunctionCompiler
                 }
 
             case Sense s:
-                EmitDirection(s.Direction, allowBack: false);
+                EmitValue(s.Direction, ValueKind.Direction, allowBack: false);
                 _b.Emit(s.Kind == SenseKind.Free ? OpCode.SenseFree : OpCode.SenseVisited);
                 break;
 
@@ -285,41 +391,64 @@ internal sealed class FunctionCompiler
         }
     }
 
-    private void EmitDirection(DirectionExpr dir, bool allowBack)
+    // ------------------------------------------------------------ Values
+
+    private void EmitValue(ValueExpr v, ValueKind expected, bool allowBack)
     {
-        switch (dir)
+        switch (v)
         {
             case DirectionLiteral lit:
-                if (lit.Value == Direction.Back && !allowBack)
+                if (expected == ValueKind.Number)
+                    _owner.Error("Expected a number but found a direction.", lit.Location);
+                else if (lit.Value == Direction.Back && !allowBack)
                     _owner.Error("'Back' is only allowed as the target of a move.", lit.Location);
                 _b.Emit(OpCode.PushDirection, (int)lit.Value);
                 break;
 
+            case NumberLiteral num:
+                if (expected == ValueKind.Direction)
+                    _owner.Error("Expected a direction but found a number.", num.Location);
+                _b.Emit(OpCode.PushInt, num.Value);
+                break;
+
             case ParameterRef p:
                 if (_slots.TryGetValue(p.Name, out int slot))
+                {
+                    var actual = _kinds[slot];
+                    if (actual != ValueKind.Unknown && expected != ValueKind.Unknown && actual != expected)
+                        _owner.Error($"The parameter '{p.Name}' is used as a {actual.ToString().ToLowerInvariant()} " +
+                                     $"and as a {expected.ToString().ToLowerInvariant()}.", p.Location);
                     _b.Emit(OpCode.LoadLocal, slot);
+                }
                 else
+                {
                     _owner.Error($"The parameter '{p.Name}' is not known here.", p.Location);
+                }
                 break;
 
             default:
-                throw new NotSupportedException($"Unknown direction type {dir.GetType().Name}.");
+                throw new NotSupportedException($"Unknown value type {v.GetType().Name}.");
         }
     }
 
-    private void EmitCall(string name, IReadOnlyList<DirectionExpr> args, SourceLocation? at, bool needsValue)
+    private void EmitCall(string name, IReadOnlyList<ValueExpr> args, SourceLocation? at, bool needsValue)
     {
-        foreach (var arg in args)
-            EmitDirection(arg, allowBack: false);
-
         if (!_owner.TryGetFunction(name, out var info))
         {
+            foreach (var arg in args)                      // still report errors inside the arguments
+                EmitValue(arg, ValueKind.Unknown, allowBack: false);
             _owner.Error($"The function '{name}' is not defined.", at);
             return;
         }
+
+        for (int i = 0; i < args.Count; i++)
+        {
+            var expected = i < info.ParamKinds.Length ? info.ParamKinds[i] : ValueKind.Unknown;
+            EmitValue(args[i], expected, allowBack: false);
+        }
+
         if (args.Count != info.Decl.Parameters.Count)
-            _owner.Error($"'{name}' expects {info.Decl.Parameters.Count} argument(s) " +
-                         $"but got {args.Count}.", at);
+            _owner.Error($"'{name}' expects {info.Decl.Parameters.Count} argument(s) but got {args.Count}.", at);
         if (needsValue && !info.ReturnsValue)
             _owner.Error($"'{name}' does not return a value and cannot be used as a condition here.", at);
 

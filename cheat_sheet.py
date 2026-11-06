@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Terminal cheat sheet of the maze DSL (work in progress).
+"""Terminal cheat sheet of the maze DSL.
 
 Usage: python syntax_sheet.py [--slow 0.05] [--lang de|en]
   --slow S   pause S seconds after every line (reveal effect for a talk)

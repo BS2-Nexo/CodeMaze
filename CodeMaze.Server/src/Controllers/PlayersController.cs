@@ -32,7 +32,7 @@ public class PlayersController(PlayerAuthService auth, PlayerSessionStore sessio
             ? NoContent()
             : BadRequest(new { error = "confirmation_failed" });
 
-    /// <summary>Returning player proves ownership of a name. Returns a session key.</summary>
+    /// <summary>Returning player proves ownership of a name. Returns a session key and their latest DSL program (null if none).</summary>
     [HttpPost("verify")]
     public async Task<IActionResult> Verify(CodeRequest req, CancellationToken ct)
     {
@@ -40,12 +40,15 @@ public class PlayersController(PlayerAuthService auth, PlayerSessionStore sessio
         if (o.Result != VerifyResult.Ok)
             return ToFailure(this, o);
 
+        var dslProgram = await auth.GetLatestProgramAsync(o.Player!.Id, ct);
+
         return Ok(new
         {
-            sessionId = sessions.Create(o.Player!),
-            playerId = o.Player!.Id,
+            sessionId = sessions.Create(o.Player),
+            playerId = o.Player.Id,
             publicId = $"#{o.Player.Id:000}",
-            displayName = o.Player.DisplayName
+            displayName = o.Player.DisplayName,
+            dslProgram
         });
     }
 

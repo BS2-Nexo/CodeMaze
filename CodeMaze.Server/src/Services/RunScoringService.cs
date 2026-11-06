@@ -59,7 +59,7 @@ public sealed class RunScoringService(
             Efficiency = score.Efficiency,
             Perfect = score.Perfect,
             Session = run.SessionId,
-            DSLProgram = "PLACEHOLDERVALUE",
+            DSLProgram = run.SourceCode,
             CreatedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync(ct);
