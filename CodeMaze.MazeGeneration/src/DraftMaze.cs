@@ -226,6 +226,79 @@ public sealed class DraftMaze
         return Flood(from, requireBothSides: false).Contains(to);
     }
 
+    // <summary>
+    /// Makes sure the exit can be reached from the entrance. If it already can, nothing changes.
+    /// Otherwise it opens the fewest walls needed to connect them (a shortest path where each closed
+    /// wall costs 1 and an open passage costs 0). Walls are removed on both cells, and the outer
+    /// boundary is never touched.
+    /// </summary>
+    /// <returns>The number of walls that were opened (0 if a path already existed).</returns>
+    public int EnsurePath()
+    {
+        if (MazeSolver.HasPath(this))
+        {
+            return 0;
+        }
+
+        var dist = new Dictionary<CellPosition, int> { [Entrance] = 0 };
+        var prev = new Dictionary<CellPosition, (CellPosition From, Walls Side, Walls Opposite)>();
+        var queue = new PriorityQueue<CellPosition, int>();
+        queue.Enqueue(Entrance, 0);
+
+        while (queue.TryDequeue(out var current, out var d))
+        {
+            if (d > dist[current])
+            {
+                continue;
+            }
+
+            if (current == Exit)
+            {
+                break;
+            }
+
+            foreach (var (side, opposite, dy, dx) in Sides)
+            {
+                var next = new CellPosition(
+                    new YCoordinate(current.Y.Value + dy),
+                    new XCoordinate(current.X.Value + dx));
+
+                if (!Contains(next))
+                {
+                    continue;
+                }
+
+                var nextDist = d + (Cells[current].HasFlag(side) ? 1 : 0);
+
+                if (dist.TryGetValue(next, out var known) && known <= nextDist)
+                {
+                    continue;
+                }
+
+                dist[next] = nextDist;
+                prev[next] = (current, side, opposite);
+                queue.Enqueue(next, nextDist);
+            }
+        }
+
+        // Walk back from the exit and open every wall that is in the way.
+        var opened = 0;
+        for (var cell = Exit; cell != Entrance; cell = prev[cell].From)
+        {
+            var (from, side, opposite) = prev[cell];
+
+            if (Cells[from].HasFlag(side))
+            {
+                Cells[from] &= ~side;
+                Cells[cell] &= ~opposite;
+                opened++;
+            }
+        }
+
+        return opened;
+    }
+
+
     /// <summary>Breadth-first flood fill. With requireBothSides, a passage must be open on both cells.</summary>
     private HashSet<CellPosition> Flood(CellPosition start, bool requireBothSides)
     {
@@ -278,6 +351,7 @@ public sealed class DraftMaze
 
     public Maze Finalize()
     {
+        EnsurePath();
         var maze = new Maze(this);
         var shortestPath = MazeSolver.FindShortestPath(maze);
         maze.ShortestPath = shortestPath;
