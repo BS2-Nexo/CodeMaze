@@ -1,0 +1,17 @@
+funktion neu(r)
+  ergebnis frei r und nicht besucht r
+ende
+
+immer
+  wenn neu hoch
+    gehe hoch
+  sonst wenn neu rechts
+    gehe rechts
+  sonst wenn neu runter
+    gehe runter
+  sonst wenn neu links
+    gehe links
+  sonst
+    gehe rückwärts
+  ende
+ende
